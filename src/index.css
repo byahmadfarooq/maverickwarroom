@@ -1,0 +1,75 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  background: #0C0B09;
+  color: #F0EBE2;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #2A2928;
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #3A3938;
+}
+
+/* Selection */
+::selection {
+  background: #FF6B2B33;
+  color: #F0EBE2;
+}
+
+/* Focus styles */
+input:focus, textarea:focus, select:focus {
+  border-color: #FF6B2B !important;
+  box-shadow: 0 0 0 2px #FF6B2B22;
+}
+
+/* Toast animation */
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* Drag hover */
+[draggable="true"]:active {
+  opacity: 0.6;
+}
+
+/* Table row hover handled inline */
+
+/* Responsive */
+@media (max-width: 768px) {
+  aside {
+    width: 64px !important;
+  }
+}

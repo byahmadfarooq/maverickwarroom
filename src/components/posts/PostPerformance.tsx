@@ -3,8 +3,9 @@ import { AppCtx } from '../../hooks/AppContext';
 import { colors, radius } from '../../utils/theme';
 import { Btn, Card, SectionHeader, Select, EmptyState, Field, Input } from '../shared/FormElements';
 import { Modal } from '../shared/Modal';
-import { DownloadIcon, FilterIcon, CalendarIcon } from '../shared/Icons';
+import { DownloadIcon } from '../shared/Icons';
 import { formatNumber, formatPercent, formatDate, daysBetween, today } from '../../utils/helpers';
+import { StoriesViewer, parseImageUrls } from '../shared/StoriesViewer';
 import type { Post, TrackingEntry, Client } from '../../types';
 
 const thStyle: React.CSSProperties = {
@@ -25,17 +26,18 @@ const metricBoxStyle: React.CSSProperties = {
 
 const TRACKING_INTERVALS = [7, 30, 60, 90] as const;
 
-function getIntervalLabel(days: number): string {
-  return `${days}d`;
-}
+const emptyForm = {
+  date: today(),
+  impressions: 0, reactions: 0, comments: 0,
+  saves: 0, shares: 0, profileViews: 0,
+  linkClicks: 0, dmsFromPost: 0, leadsFromPost: 0,
+};
 
 function getTrackingEntryForInterval(post: Post, intervalDays: number): TrackingEntry | undefined {
   if (!post.publishedDate) return undefined;
   const targetDate = new Date(post.publishedDate);
   targetDate.setDate(targetDate.getDate() + intervalDays);
   const targetStr = targetDate.toISOString().split('T')[0];
-
-  // Find closest entry within 3 days of the target
   let closest: TrackingEntry | undefined;
   let closestDiff = Infinity;
   for (const entry of post.trackingLog) {
@@ -59,25 +61,19 @@ export const PostPerformance: React.FC = () => {
   const [dateFrom, setDateFrom] = useState<string>('');
   const [dateTo, setDateTo] = useState<string>('');
   const [trackingModalPost, setTrackingModalPost] = useState<string | null>(null);
-  const [trackingForm, setTrackingForm] = useState({ impressions: 0, reactions: 0, comments: 0 });
+  const [trackingForm, setTrackingForm] = useState({ ...emptyForm });
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
+  const [storiesPost, setStoriesPost] = useState<Post | null>(null);
 
   const publishedPosts = useMemo(() => {
     let filtered = posts.filter((p: Post) => p.status === 'published');
-
     if (clientFilter === 'personal') {
       filtered = filtered.filter((p: Post) => p.clientId === 'personal');
     } else if (clientFilter !== 'all') {
       filtered = filtered.filter((p: Post) => p.clientId === clientFilter);
     }
-
-    if (dateFrom) {
-      filtered = filtered.filter((p: Post) => (p.publishedDate || '') >= dateFrom);
-    }
-    if (dateTo) {
-      filtered = filtered.filter((p: Post) => (p.publishedDate || '') <= dateTo);
-    }
-
+    if (dateFrom) filtered = filtered.filter((p: Post) => (p.publishedDate || '') >= dateFrom);
+    if (dateTo) filtered = filtered.filter((p: Post) => (p.publishedDate || '') <= dateTo);
     return filtered.sort((a, b) => (b.publishedDate || '').localeCompare(a.publishedDate || ''));
   }, [posts, clientFilter, dateFrom, dateTo]);
 
@@ -90,26 +86,58 @@ export const PostPerformance: React.FC = () => {
     return clients.filter((c: Client) => uniqueIds.has(c.id));
   }, [posts, clients]);
 
+  const openTrackingModal = (post: Post, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setTrackingForm({
+      date: today(),
+      impressions: post.impressions,
+      reactions: post.reactions,
+      comments: post.comments,
+      saves: post.saves,
+      shares: post.shares,
+      profileViews: post.profileViews,
+      linkClicks: post.linkClicks,
+      dmsFromPost: post.dmsFromPost,
+      leadsFromPost: post.leadsFromPost,
+    });
+    setTrackingModalPost(post.id);
+  };
+
   const handleAddTracking = (): void => {
     if (!trackingModalPost) return;
+    const post = posts.find((p: Post) => p.id === trackingModalPost);
+    if (!post) return;
+
     const entry: TrackingEntry = {
       id: Math.random().toString(36).slice(2),
-      date: today(),
+      date: trackingForm.date || today(),
       impressions: trackingForm.impressions,
       reactions: trackingForm.reactions,
       comments: trackingForm.comments,
+      saves: trackingForm.saves,
+      shares: trackingForm.shares,
+      profileViews: trackingForm.profileViews,
+      linkClicks: trackingForm.linkClicks,
+      dmsFromPost: trackingForm.dmsFromPost,
+      leadsFromPost: trackingForm.leadsFromPost,
     };
-    const post = posts.find((p: Post) => p.id === trackingModalPost);
-    if (!post) return;
+
+    // Update the post's top-level metrics to the max seen across all entries
     updatePost(trackingModalPost, {
       trackingLog: [...post.trackingLog, entry],
       impressions: Math.max(post.impressions, trackingForm.impressions),
       reactions: Math.max(post.reactions, trackingForm.reactions),
       comments: Math.max(post.comments, trackingForm.comments),
+      saves: Math.max(post.saves, trackingForm.saves),
+      shares: Math.max(post.shares, trackingForm.shares),
+      profileViews: Math.max(post.profileViews, trackingForm.profileViews),
+      linkClicks: Math.max(post.linkClicks, trackingForm.linkClicks),
+      dmsFromPost: Math.max(post.dmsFromPost, trackingForm.dmsFromPost),
+      leadsFromPost: Math.max(post.leadsFromPost, trackingForm.leadsFromPost),
     });
-    toast('Tracking entry added', 'success');
+    toast('Analytics entry saved', 'success');
     setTrackingModalPost(null);
-    setTrackingForm({ impressions: 0, reactions: 0, comments: 0 });
+    setTrackingForm({ ...emptyForm });
   };
 
   const handleExport = (): void => {
@@ -118,7 +146,9 @@ export const PostPerformance: React.FC = () => {
     ];
     publishedPosts.forEach((p: Post) => {
       const client = p.clientId === 'personal' ? 'Personal' : (clients.find((c: Client) => c.id === p.clientId)?.name || '--');
-      const trackingStr = p.trackingLog.map((t) => `${t.date}: imp=${t.impressions} react=${t.reactions} cmt=${t.comments}`).join(' | ');
+      const trackingStr = p.trackingLog.map((t) =>
+        `${t.date}: imp=${t.impressions} react=${t.reactions} cmt=${t.comments} saves=${t.saves ?? 0}`
+      ).join(' | ');
       lines.push([
         `"${p.title.replace(/"/g, '""')}"`,
         `"${client}"`,
@@ -128,7 +158,6 @@ export const PostPerformance: React.FC = () => {
         `"${trackingStr}"`,
       ].join(','));
     });
-
     const blob = new Blob([lines.join('\n')], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -139,6 +168,11 @@ export const PostPerformance: React.FC = () => {
     toast('Exported post performance data', 'success');
   };
 
+  const setField = (key: keyof typeof emptyForm) => (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = key === 'date' ? e.target.value : (parseInt(e.target.value) || 0);
+    setTrackingForm((f) => ({ ...f, [key]: val }));
+  };
+
   const renderPostCard = (post: Post): React.ReactNode => {
     const client = post.clientId === 'personal' ? null : clients.find((c: Client) => c.id === post.clientId);
     const isExpanded = expandedPostId === post.id;
@@ -147,32 +181,57 @@ export const PostPerformance: React.FC = () => {
 
     return (
       <Card key={post.id} style={{ marginBottom: 12 }}>
-        {/* Header */}
-        <div
-          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', cursor: 'pointer' }}
-          onClick={() => setExpandedPostId(isExpanded ? null : post.id)}
-        >
-          <div style={{ flex: 1 }}>
+        {/* Header row */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
+          {/* Click area to expand */}
+          <div
+            style={{ flex: 1, cursor: 'pointer' }}
+            onClick={() => setExpandedPostId(isExpanded ? null : post.id)}
+          >
             <div style={{ fontSize: 15, fontWeight: 600, color: colors.textPrimary, marginBottom: 4 }}>
               {post.title}
             </div>
             <div style={{ fontSize: 12, color: colors.textSecondary }}>
               {post.clientId === 'personal' ? 'Personal' : client?.name || '--'}
-              {post.publishedDate && ` \u00b7 ${formatDate(post.publishedDate)}`}
+              {post.publishedDate && ` · ${formatDate(post.publishedDate)}`}
+              {post.trackingLog.length > 0 && (
+                <span style={{
+                  marginLeft: 8, background: colors.accentMuted, color: colors.accent,
+                  padding: '1px 7px', borderRadius: 99, fontSize: 11, fontWeight: 600,
+                }}>
+                  {post.trackingLog.length} log{post.trackingLog.length !== 1 ? 's' : ''}
+                </span>
+              )}
             </div>
           </div>
-          <div style={{ textAlign: 'right', flexShrink: 0 }}>
-            <div style={{ fontSize: 18, fontWeight: 700, color: colors.accent }}>
-              {formatNumber(post.impressions)}
+
+          {/* Right side: impressions + action buttons */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+            <div style={{ textAlign: 'right', marginRight: 4 }}>
+              <div style={{ fontSize: 20, fontWeight: 700, color: colors.accent, lineHeight: 1.1 }}>
+                {formatNumber(post.impressions)}
+              </div>
+              <div style={{ fontSize: 11, color: colors.textSecondary }}>impressions</div>
             </div>
-            <div style={{ fontSize: 11, color: colors.textSecondary }}>impressions</div>
+            {post.imageUrl && parseImageUrls(post.imageUrl).length > 0 && (
+              <Btn
+                variant="secondary" size="sm"
+                onClick={(e) => { e.stopPropagation(); setStoriesPost(post); }}
+                style={{ whiteSpace: 'nowrap' }}
+                title="View images"
+              >
+                🖼 View
+              </Btn>
+            )}
+            <Btn size="sm" onClick={(e) => openTrackingModal(post, e)} style={{ whiteSpace: 'nowrap' }}>
+              + Log Analytics
+            </Btn>
           </div>
         </div>
 
         {/* Metrics Grid (always visible) */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(100px, 1fr))', gap: 8, marginTop: 12 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(90px, 1fr))', gap: 6, marginTop: 12 }}>
           {[
-            { label: 'Impressions', value: formatNumber(post.impressions) },
             { label: 'Reactions', value: post.reactions },
             { label: 'Comments', value: post.comments },
             { label: 'Saves', value: post.saves },
@@ -181,30 +240,36 @@ export const PostPerformance: React.FC = () => {
             { label: 'Link Clicks', value: post.linkClicks },
             { label: 'DMs', value: post.dmsFromPost },
             { label: 'Leads', value: post.leadsFromPost },
+            { label: 'Eng. Rate', value: formatPercent(engRate) },
           ].map((m) => (
             <div key={m.label} style={metricBoxStyle}>
-              <div style={{ fontSize: 10, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>{m.label}</div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: colors.textPrimary }}>{m.value}</div>
+              <div style={{ fontSize: 9, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>{m.label}</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: colors.textPrimary }}>{m.value}</div>
             </div>
           ))}
         </div>
 
-        {/* Expanded: Tracking Intervals + Log */}
+        {/* Expand toggle */}
+        <div
+          style={{ marginTop: 10, fontSize: 11, color: colors.textMuted, cursor: 'pointer', userSelect: 'none' }}
+          onClick={() => setExpandedPostId(isExpanded ? null : post.id)}
+        >
+          {isExpanded ? '▲ Hide history' : '▼ Show tracking history'}
+        </div>
+
+        {/* Expanded: Tracking history */}
         {isExpanded && (
-          <div style={{ marginTop: 16, paddingTop: 16, borderTop: `1px solid ${colors.border}` }}>
-            {/* Tracking intervals table */}
+          <div style={{ marginTop: 14, paddingTop: 14, borderTop: `1px solid ${colors.border}` }}>
             <h4 style={{ margin: '0 0 10px', fontSize: 12, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-              Performance Tracking
+              Interval Snapshots
             </h4>
             <div style={{ overflowX: 'auto', marginBottom: 12 }}>
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
                 <thead>
                   <tr>
-                    <th style={{ ...thStyle, fontSize: 10 }}>Interval</th>
-                    <th style={{ ...thStyle, fontSize: 10 }}>Date</th>
-                    <th style={{ ...thStyle, fontSize: 10 }}>Impressions</th>
-                    <th style={{ ...thStyle, fontSize: 10 }}>Reactions</th>
-                    <th style={{ ...thStyle, fontSize: 10 }}>Comments</th>
+                    {['Interval', 'Date', 'Imp.', 'React.', 'Cmt.', 'Saves', 'Shares', 'DMs', 'Leads'].map((h) => (
+                      <th key={h} style={{ ...thStyle, fontSize: 10 }}>{h}</th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
@@ -212,28 +277,31 @@ export const PostPerformance: React.FC = () => {
                     const entry = getTrackingEntryForInterval(post, interval);
                     return (
                       <tr key={interval}>
-                        <td style={{ ...tdStyle, fontWeight: 600, fontSize: 12 }}>{getIntervalLabel(interval)}</td>
-                        <td style={{ ...tdStyle, fontSize: 12, color: colors.textSecondary }}>
-                          {entry ? formatDate(entry.date) : '--'}
-                        </td>
-                        <td style={{ ...tdStyle, fontSize: 12 }}>{entry ? formatNumber(entry.impressions) : '--'}</td>
-                        <td style={{ ...tdStyle, fontSize: 12 }}>{entry ? entry.reactions : '--'}</td>
-                        <td style={{ ...tdStyle, fontSize: 12 }}>{entry ? entry.comments : '--'}</td>
+                        <td style={{ ...tdStyle, fontWeight: 600 }}>{interval}d</td>
+                        <td style={{ ...tdStyle, color: colors.textSecondary }}>{entry ? formatDate(entry.date) : '--'}</td>
+                        <td style={tdStyle}>{entry ? formatNumber(entry.impressions) : '--'}</td>
+                        <td style={tdStyle}>{entry ? entry.reactions : '--'}</td>
+                        <td style={tdStyle}>{entry ? entry.comments : '--'}</td>
+                        <td style={tdStyle}>{entry ? (entry.saves ?? '--') : '--'}</td>
+                        <td style={tdStyle}>{entry ? (entry.shares ?? '--') : '--'}</td>
+                        <td style={tdStyle}>{entry ? (entry.dmsFromPost ?? '--') : '--'}</td>
+                        <td style={tdStyle}>{entry ? (entry.leadsFromPost ?? '--') : '--'}</td>
                       </tr>
                     );
                   })}
-                  {/* Latest entry */}
                   {(() => {
                     const latest = getLatestEntry(post);
                     return (
                       <tr style={{ background: colors.surfaceAlt }}>
-                        <td style={{ ...tdStyle, fontWeight: 600, fontSize: 12, color: colors.accent }}>Latest</td>
-                        <td style={{ ...tdStyle, fontSize: 12, color: colors.textSecondary }}>
-                          {latest ? formatDate(latest.date) : '--'}
-                        </td>
-                        <td style={{ ...tdStyle, fontSize: 12 }}>{latest ? formatNumber(latest.impressions) : '--'}</td>
-                        <td style={{ ...tdStyle, fontSize: 12 }}>{latest ? latest.reactions : '--'}</td>
-                        <td style={{ ...tdStyle, fontSize: 12 }}>{latest ? latest.comments : '--'}</td>
+                        <td style={{ ...tdStyle, fontWeight: 700, color: colors.accent }}>Latest</td>
+                        <td style={{ ...tdStyle, color: colors.textSecondary }}>{latest ? formatDate(latest.date) : '--'}</td>
+                        <td style={tdStyle}>{latest ? formatNumber(latest.impressions) : '--'}</td>
+                        <td style={tdStyle}>{latest ? latest.reactions : '--'}</td>
+                        <td style={tdStyle}>{latest ? latest.comments : '--'}</td>
+                        <td style={tdStyle}>{latest ? (latest.saves ?? '--') : '--'}</td>
+                        <td style={tdStyle}>{latest ? (latest.shares ?? '--') : '--'}</td>
+                        <td style={tdStyle}>{latest ? (latest.dmsFromPost ?? '--') : '--'}</td>
+                        <td style={tdStyle}>{latest ? (latest.leadsFromPost ?? '--') : '--'}</td>
                       </tr>
                     );
                   })()}
@@ -241,24 +309,27 @@ export const PostPerformance: React.FC = () => {
               </table>
             </div>
 
-            {/* Full tracking log */}
             {post.trackingLog.length > 0 && (
-              <div style={{ marginBottom: 12 }}>
+              <div>
                 <h4 style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
-                  All Tracking Entries ({post.trackingLog.length})
+                  All Entries ({post.trackingLog.length})
                 </h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                   {[...post.trackingLog].sort((a, b) => a.date.localeCompare(b.date)).map((entry) => {
-                    const daysSincePublish = post.publishedDate ? daysBetween(post.publishedDate, entry.date) : 0;
+                    const daysSince = post.publishedDate ? daysBetween(post.publishedDate, entry.date) : 0;
                     return (
                       <div key={entry.id} style={{
-                        display: 'flex', gap: 12, padding: '6px 10px', background: colors.bg,
-                        borderRadius: radius.sm, fontSize: 12, alignItems: 'center',
+                        display: 'flex', gap: 10, padding: '6px 10px', background: colors.bg,
+                        borderRadius: radius.sm, fontSize: 12, alignItems: 'center', flexWrap: 'wrap',
                       }}>
-                        <span style={{ color: colors.textSecondary, width: 90, flexShrink: 0 }}>{formatDate(entry.date)}</span>
-                        <span style={{ color: colors.textMuted, width: 50, flexShrink: 0 }}>Day {daysSincePublish}</span>
+                        <span style={{ color: colors.textSecondary, minWidth: 80, flexShrink: 0 }}>{formatDate(entry.date)}</span>
+                        <span style={{ color: colors.textMuted, minWidth: 46, flexShrink: 0 }}>Day {daysSince}</span>
                         <span style={{ color: colors.textPrimary }}>
-                          Imp: {formatNumber(entry.impressions)} | React: {entry.reactions} | Cmt: {entry.comments}
+                          {formatNumber(entry.impressions)} imp · {entry.reactions} react · {entry.comments} cmt
+                          {entry.saves ? ` · ${entry.saves} saves` : ''}
+                          {entry.shares ? ` · ${entry.shares} shares` : ''}
+                          {entry.dmsFromPost ? ` · ${entry.dmsFromPost} DMs` : ''}
+                          {entry.leadsFromPost ? ` · ${entry.leadsFromPost} leads` : ''}
                         </span>
                       </div>
                     );
@@ -266,13 +337,6 @@ export const PostPerformance: React.FC = () => {
                 </div>
               </div>
             )}
-
-            <Btn size="sm" onClick={() => {
-              setTrackingForm({ impressions: post.impressions, reactions: post.reactions, comments: post.comments });
-              setTrackingModalPost(post.id);
-            }}>
-              Add Tracking Entry
-            </Btn>
           </div>
         )}
       </Card>
@@ -380,41 +444,76 @@ export const PostPerformance: React.FC = () => {
         </div>
       )}
 
-      {/* Add Tracking Modal */}
+      {/* Stories / Image Viewer */}
+      {storiesPost && storiesPost.imageUrl && (
+        <StoriesViewer
+          images={parseImageUrls(storiesPost.imageUrl)}
+          title={storiesPost.title}
+          onClose={() => setStoriesPost(null)}
+        />
+      )}
+
+      {/* Log Analytics Modal */}
       <Modal
         open={trackingModalPost !== null}
         onClose={() => setTrackingModalPost(null)}
-        title="Add Tracking Entry"
-        width={420}
+        title="Log Analytics"
+        width={500}
       >
-        <div style={{ marginBottom: 8, fontSize: 13, color: colors.textSecondary }}>
-          Recording metrics as of <strong style={{ color: colors.textPrimary }}>{formatDate(today())}</strong>
-        </div>
-        <Field label="Impressions" required>
-          <Input
-            type="number"
-            value={trackingForm.impressions}
-            onChange={(e) => setTrackingForm((f) => ({ ...f, impressions: parseInt(e.target.value) || 0 }))}
-          />
-        </Field>
-        <Field label="Reactions" required>
-          <Input
-            type="number"
-            value={trackingForm.reactions}
-            onChange={(e) => setTrackingForm((f) => ({ ...f, reactions: parseInt(e.target.value) || 0 }))}
-          />
-        </Field>
-        <Field label="Comments" required>
-          <Input
-            type="number"
-            value={trackingForm.comments}
-            onChange={(e) => setTrackingForm((f) => ({ ...f, comments: parseInt(e.target.value) || 0 }))}
-          />
-        </Field>
-        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
-          <Btn variant="secondary" onClick={() => setTrackingModalPost(null)}>Cancel</Btn>
-          <Btn onClick={handleAddTracking}>Save Entry</Btn>
-        </div>
+        {(() => {
+          const post = posts.find((p: Post) => p.id === trackingModalPost);
+          return (
+            <>
+              {post && (
+                <div style={{ marginBottom: 14, padding: '8px 12px', background: colors.surfaceAlt, borderRadius: radius.md, fontSize: 13 }}>
+                  <span style={{ fontWeight: 600, color: colors.textPrimary }}>{post.title}</span>
+                  {post.publishedDate && (
+                    <span style={{ color: colors.textSecondary, marginLeft: 8 }}>· published {formatDate(post.publishedDate)}</span>
+                  )}
+                </div>
+              )}
+
+              <Field label="Snapshot Date" required>
+                <Input type="date" value={trackingForm.date} onChange={setField('date')} />
+              </Field>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                <Field label="Impressions" required>
+                  <Input type="number" value={trackingForm.impressions} onChange={setField('impressions')} />
+                </Field>
+                <Field label="Reactions" required>
+                  <Input type="number" value={trackingForm.reactions} onChange={setField('reactions')} />
+                </Field>
+                <Field label="Comments" required>
+                  <Input type="number" value={trackingForm.comments} onChange={setField('comments')} />
+                </Field>
+                <Field label="Saves">
+                  <Input type="number" value={trackingForm.saves} onChange={setField('saves')} />
+                </Field>
+                <Field label="Shares">
+                  <Input type="number" value={trackingForm.shares} onChange={setField('shares')} />
+                </Field>
+                <Field label="Profile Views">
+                  <Input type="number" value={trackingForm.profileViews} onChange={setField('profileViews')} />
+                </Field>
+                <Field label="Link Clicks">
+                  <Input type="number" value={trackingForm.linkClicks} onChange={setField('linkClicks')} />
+                </Field>
+                <Field label="DMs from Post">
+                  <Input type="number" value={trackingForm.dmsFromPost} onChange={setField('dmsFromPost')} />
+                </Field>
+                <Field label="Leads from Post">
+                  <Input type="number" value={trackingForm.leadsFromPost} onChange={setField('leadsFromPost')} />
+                </Field>
+              </div>
+
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+                <Btn variant="secondary" onClick={() => setTrackingModalPost(null)}>Cancel</Btn>
+                <Btn onClick={handleAddTracking}>Save Entry</Btn>
+              </div>
+            </>
+          );
+        })()}
       </Modal>
     </div>
   );

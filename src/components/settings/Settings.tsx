@@ -4,6 +4,7 @@ import { colors, radius } from '../../utils/theme';
 import { Card, Btn, Field, Input, SectionHeader } from '../shared/FormElements';
 import { DownloadIcon, UploadIcon, TrashIcon, DollarIcon, TargetIcon, UsersIcon } from '../shared/Icons';
 import { exportAllData, importAllData, clearAllStorage } from '../../utils/storage';
+import { supabase } from '../../lib/supabase';
 import type { Settings as SettingsType } from '../../types';
 
 const SectionCard: React.FC<{ title: string; icon?: React.ReactNode; children: React.ReactNode }> = ({ title, icon, children }) => (
@@ -197,7 +198,13 @@ export const SettingsSection: React.FC = () => {
         </div>
       </SectionCard>
 
-      <div style={{ textAlign: 'right' }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <Btn
+          variant="secondary"
+          onClick={async () => { await supabase.auth.signOut(); }}
+        >
+          Sign Out
+        </Btn>
         <Btn onClick={handleSave} size="lg" style={saved ? { background: colors.success } : {}}>
           {saved ? '✓ Settings Saved' : 'Save All Settings'}
         </Btn>

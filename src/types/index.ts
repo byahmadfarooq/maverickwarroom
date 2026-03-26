@@ -151,6 +151,12 @@ export interface TrackingEntry {
   impressions: number;
   reactions: number;
   comments: number;
+  saves: number;
+  shares: number;
+  profileViews: number;
+  linkClicks: number;
+  dmsFromPost: number;
+  leadsFromPost: number;
 }
 
 export interface CommentEntry {

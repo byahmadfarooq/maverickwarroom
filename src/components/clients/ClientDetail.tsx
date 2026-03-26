@@ -54,7 +54,7 @@ export const ClientDetail: React.FC<Props> = ({ client, posts, onClose, onUpdate
   const [actDate, setActDate] = useState(today());
   const [actNotes, setActNotes] = useState('');
 
-  const rate = settings.finance.exchangeRate;
+  const rate = settings?.finance?.exchangeRate ?? 278;
   const publishedPosts = posts.filter((p) => p.status === 'published');
   const totalImpressions = publishedPosts.reduce((s, p) => s + p.impressions, 0);
   const totalEngagement = publishedPosts.reduce((s, p) => s + p.reactions + p.comments, 0);

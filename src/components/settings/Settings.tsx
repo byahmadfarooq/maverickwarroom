@@ -79,7 +79,8 @@ export const SettingsSection: React.FC = () => {
     setTimeout(() => window.location.reload(), 1000);
   };
 
-  const pkrPreview = Math.round(1000 * settings.finance.exchangeRate).toLocaleString();
+  const finance = settings?.finance ?? { hourlyRate: 50, exchangeRate: 278, cacTotal: 0 };
+  const pkrPreview = Math.round(1000 * finance.exchangeRate).toLocaleString();
 
   return (
     <div style={{ maxWidth: 640 }}>
@@ -114,7 +115,7 @@ export const SettingsSection: React.FC = () => {
           <Field label="Hourly Rate (USD)">
             <Input
               type="number" min="0" step="5"
-              value={settings.finance.hourlyRate}
+              value={finance.hourlyRate}
               onChange={(e) => setFinance('hourlyRate', e.target.value)}
               placeholder="75"
             />
@@ -122,7 +123,7 @@ export const SettingsSection: React.FC = () => {
           <Field label="Total CAC Spend (USD)">
             <Input
               type="number" min="0"
-              value={settings.finance.cacTotal}
+              value={finance.cacTotal}
               onChange={(e) => setFinance('cacTotal', e.target.value)}
               placeholder="500"
             />
@@ -132,7 +133,7 @@ export const SettingsSection: React.FC = () => {
         <Field label="USD → PKR Exchange Rate">
           <Input
             type="number" min="1" step="1"
-            value={settings.finance.exchangeRate}
+            value={finance.exchangeRate}
             onChange={(e) => setFinance('exchangeRate', e.target.value)}
             placeholder="278"
           />

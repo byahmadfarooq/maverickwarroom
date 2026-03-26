@@ -19,9 +19,10 @@ const tdStyle: React.CSSProperties = {
 
 export const Finance: React.FC = () => {
   const { clients, tasks, settings } = useContext(AppCtx);
-  const rate = settings.finance.exchangeRate;
+  const rate = settings?.finance?.exchangeRate ?? 278;
 
   const data = useMemo(() => {
+    const finance = settings?.finance ?? { hourlyRate: 50, exchangeRate: 278, cacTotal: 0 };
     const activeRetainer = clients.filter((c) => c.status === 'active' && c.billingType === 'retainer');
     const activeOneTime = clients.filter((c) => c.status === 'active' && c.billingType === 'one_time');
     const allActive = clients.filter((c) => c.status === 'active');
@@ -32,7 +33,7 @@ export const Finance: React.FC = () => {
 
     // Unit Economics
     const totalClientsAcquired = clients.length;
-    const cac = totalClientsAcquired > 0 ? settings.finance.cacTotal / totalClientsAcquired : 0;
+    const cac = totalClientsAcquired > 0 ? finance.cacTotal / totalClientsAcquired : 0;
 
     const avgRetainer = activeRetainer.length > 0
       ? activeRetainer.reduce((s, c) => s + c.retainer, 0) / activeRetainer.length
@@ -53,7 +54,7 @@ export const Finance: React.FC = () => {
     const allTimeEntries = tasks.flatMap((t) => t.timeEntries);
     const totalHours = allTimeEntries.reduce((s, e) => s + e.hours, 0);
     const revenuePerHour = totalHours > 0 ? totalRevenue / totalHours : 0;
-    const hourlyRate = settings.finance.hourlyRate;
+    const hourlyRate = finance.hourlyRate;
 
     // Profit margin estimate: (revenue - cost) / revenue
     const estimatedCost = totalHours * hourlyRate;

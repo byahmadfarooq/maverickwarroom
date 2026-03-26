@@ -95,7 +95,7 @@ export const OutboundTracker: React.FC = () => {
     setEditingProspect(null);
   };
 
-  const rate = settings.finance.exchangeRate;
+  const rate = settings?.finance?.exchangeRate ?? 278;
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 120px)' }}>

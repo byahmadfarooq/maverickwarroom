@@ -1,4 +1,10 @@
 import { v4 as uuidv4 } from 'uuid';
+import { CLIENT_PALETTE } from './theme';
+
+// Returns a stable color for a client based on its index in the clients array
+export function getClientColor(index: number): string {
+  return CLIENT_PALETTE[index % CLIENT_PALETTE.length];
+}
 
 export const genId = (): string => uuidv4();
 export const today = (): string => new Date().toISOString().split('T')[0];

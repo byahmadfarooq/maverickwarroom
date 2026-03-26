@@ -6,7 +6,7 @@ import { Modal } from '../shared/Modal';
 import { ClientForm } from './ClientForm';
 import { ClientDetail } from './ClientDetail';
 import { PlusIcon } from '../shared/Icons';
-import { formatCurrency, formatNumber, formatDate, formatDualCurrency, isThisMonth } from '../../utils/helpers';
+import { formatCurrency, formatNumber, formatDate, formatDualCurrency, isThisMonth, getClientColor } from '../../utils/helpers';
 import type { Client } from '../../types';
 
 export const Clients: React.FC = () => {
@@ -38,20 +38,14 @@ export const Clients: React.FC = () => {
     setEditingClient(null);
   };
 
-  const rate = settings.finance.exchangeRate;
+  const rate = settings?.finance?.exchangeRate ?? 278;
 
   return (
     <div>
       {/* Search + Filter + Add */}
-      <div style={{
-        display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap',
-      }}>
+      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
         <SearchBar value={search} onChange={setSearch} placeholder="Search clients..." />
-        <Select
-          value={statusFilter}
-          onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ width: 'auto', minWidth: 140 }}
-        >
+        <Select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)} style={{ width: 'auto', minWidth: 140 }}>
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="paused">Paused</option>
@@ -70,116 +64,116 @@ export const Clients: React.FC = () => {
           onAction={() => setShowForm(true)}
         />
       ) : (
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
-          gap: 16,
-        }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: 16 }}>
           {filtered.map((c) => {
+            // Use the global index (not filtered index) for stable color assignment
+            const globalIdx = clients.findIndex((cl) => cl.id === c.id);
+            const clientColor = getClientColor(globalIdx);
             const clientPosts = posts.filter((p) => p.clientId === c.id);
-            const postsThisMonth = clientPosts.filter(
-              (p) => p.publishedDate && isThisMonth(p.publishedDate)
-            ).length;
+            const postsThisMonth = clientPosts.filter((p) => p.publishedDate && isThisMonth(p.publishedDate)).length;
             const totalImpressions = clientPosts.reduce((s, p) => s + p.impressions, 0);
             const monthlyValue = c.billingType === 'retainer' ? c.retainer : c.projectValue;
 
             return (
-              <Card
+              <div
                 key={c.id}
                 onClick={() => setDetailClient(c)}
                 style={{
+                  background: colors.surface,
+                  border: `1px solid ${colors.border}`,
+                  borderRadius: radius.lg,
+                  overflow: 'hidden',
                   cursor: 'pointer',
-                  transition: 'border-color 0.2s, transform 0.2s, box-shadow 0.2s',
+                  transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.15s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.borderColor = clientColor;
+                  e.currentTarget.style.boxShadow = `0 0 20px ${clientColor}18`;
+                  e.currentTarget.style.transform = 'translateY(-1px)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.borderColor = colors.border;
+                  e.currentTarget.style.boxShadow = 'none';
+                  e.currentTarget.style.transform = 'translateY(0)';
                 }}
               >
-                {/* Header: Name, Company, Status */}
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
-                  marginBottom: 14,
-                }}>
-                  <div>
-                    <div style={{
-                      fontWeight: 700, fontSize: 15, color: colors.textPrimary,
-                      letterSpacing: -0.2, marginBottom: 2,
-                    }}>
-                      {c.name}
-                    </div>
-                    <div style={{ fontSize: 13, color: colors.textSecondary }}>{c.company}</div>
-                  </div>
-                  <StatusBadge status={c.status} />
-                </div>
+                {/* Color stripe at top */}
+                <div style={{ height: 4, background: clientColor, width: '100%' }} />
 
-                {/* Value + Billing Type */}
-                <div style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  marginBottom: 14,
-                }}>
-                  <div>
-                    <div style={{
-                      fontSize: 20, fontWeight: 700, color: colors.success, letterSpacing: -0.3,
-                    }}>
-                      {formatCurrency(monthlyValue)}
+                <div style={{ padding: 20 }}>
+                  {/* Header: Avatar, Name, Company, Status */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 14 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                      {/* Colored avatar circle */}
+                      <div style={{
+                        width: 40, height: 40, borderRadius: radius.full,
+                        background: clientColor + '20',
+                        border: `2px solid ${clientColor}40`,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        fontSize: 16, fontWeight: 700, color: clientColor,
+                        flexShrink: 0,
+                      }}>
+                        {c.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, fontSize: 15, color: colors.textPrimary, letterSpacing: -0.2, marginBottom: 2 }}>
+                          {c.name}
+                        </div>
+                        <div style={{ fontSize: 12, color: colors.textSecondary }}>{c.company}</div>
+                      </div>
                     </div>
-                    <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
-                      {formatDualCurrency(monthlyValue, rate)}
-                    </div>
+                    <StatusBadge status={c.status} />
                   </div>
-                  <StatusBadge status={c.billingType} />
-                </div>
 
-                {/* Stats Row */}
-                <div style={{
-                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
-                  marginBottom: 14, padding: '10px 0',
-                  borderTop: `1px solid ${colors.border}`,
-                  borderBottom: `1px solid ${colors.border}`,
-                }}>
-                  <div>
-                    <div style={{
-                      fontSize: 16, fontWeight: 700, color: colors.textPrimary,
-                    }}>
-                      {postsThisMonth}
+                  {/* Value + Billing Type */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14 }}>
+                    <div>
+                      <div style={{ fontSize: 20, fontWeight: 700, color: clientColor, letterSpacing: -0.3 }}>
+                        {formatCurrency(monthlyValue)}
+                      </div>
+                      <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                        {formatDualCurrency(monthlyValue, rate)}
+                      </div>
                     </div>
-                    <div style={{
-                      fontSize: 11, color: colors.textSecondary, textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                    }}>
-                      Posts This Month
-                    </div>
+                    <StatusBadge status={c.billingType} />
                   </div>
-                  <div>
-                    <div style={{
-                      fontSize: 16, fontWeight: 700, color: colors.info,
-                    }}>
-                      {formatNumber(totalImpressions)}
-                    </div>
-                    <div style={{
-                      fontSize: 11, color: colors.textSecondary, textTransform: 'uppercase',
-                      letterSpacing: 0.5,
-                    }}>
-                      Total Impressions
-                    </div>
-                  </div>
-                </div>
 
-                {/* Content Pillars */}
-                {c.pillars.length > 0 && (
+                  {/* Stats Row */}
                   <div style={{
-                    display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10,
+                    display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+                    marginBottom: 14, padding: '10px 0',
+                    borderTop: `1px solid ${colors.border}`,
+                    borderBottom: `1px solid ${colors.border}`,
                   }}>
-                    {c.pillars.map((p) => (
-                      <Badge key={p} color={colors.accent}>{p}</Badge>
-                    ))}
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: colors.textPrimary }}>{postsThisMonth}</div>
+                      <div style={{ fontSize: 11, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Posts This Month
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: colors.info }}>{formatNumber(totalImpressions)}</div>
+                      <div style={{ fontSize: 11, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.5 }}>
+                        Total Impressions
+                      </div>
+                    </div>
                   </div>
-                )}
 
-                {/* Start Date */}
-                <div style={{
-                  fontSize: 11, color: colors.textMuted, marginTop: 4,
-                }}>
-                  Since {formatDate(c.startDate)}
+                  {/* Content Pillars */}
+                  {c.pillars.length > 0 && (
+                    <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10 }}>
+                      {c.pillars.map((p) => (
+                        <Badge key={p} color={clientColor}>{p}</Badge>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Start Date */}
+                  <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
+                    Client since {formatDate(c.startDate)}
+                  </div>
                 </div>
-              </Card>
+              </div>
             );
           })}
         </div>

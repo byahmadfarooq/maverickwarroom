@@ -27,7 +27,7 @@ export const ProspectDetail: React.FC<Props> = ({ prospect, onClose, onUpdate, o
   const [actNotes, setActNotes] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const rate = settings.finance.exchangeRate;
+  const rate = settings?.finance?.exchangeRate ?? 278;
 
   const addActivity = () => {
     const activity: Activity = { id: genId(), date: actDate, type: actType, notes: actNotes };

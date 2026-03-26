@@ -16,7 +16,16 @@ export function useAppState() {
   const [clients, setClients] = useState<Client[]>(() => loadFromStorage('clients', []));
   const [posts, setPosts] = useState<Post[]>(() => loadFromStorage('posts', []));
   const [tasks, setTasks] = useState<Task[]>(() => loadFromStorage('tasks', []));
-  const [settings, setSettings] = useState<Settings>(() => loadFromStorage('settings', defaultSettings));
+  const [settings, setSettings] = useState<Settings>(() => {
+    // Deep-merge so that new keys (e.g. finance) always exist even if old data lacks them
+    const raw = loadFromStorage<Partial<Settings>>('settings', defaultSettings);
+    return {
+      ...defaultSettings,
+      ...raw,
+      goals: { ...defaultSettings.goals, ...(raw.goals ?? {}) },
+      finance: { ...defaultSettings.finance, ...(raw.finance ?? {}) },
+    };
+  });
   const [activeSection, setActiveSection] = useState<Section>('dashboard');
   const [toasts, setToasts] = useState<{ id: string; message: string; type: 'success' | 'error' | 'info' }[]>([]);
 

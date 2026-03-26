@@ -28,6 +28,22 @@ export const colors = {
   shadowLg: '0 10px 30px rgba(0,0,0,0.5), 0 1px 2px rgba(0,0,0,0.3)',
 } as const;
 
+// Distinct per-client color palette — cycle by index
+export const CLIENT_PALETTE = [
+  '#FF6B2B', // orange
+  '#3B82F6', // blue
+  '#A855F7', // purple
+  '#22C55E', // green
+  '#EC4899', // pink
+  '#F59E0B', // amber
+  '#06B6D4', // cyan
+  '#EF4444', // red
+  '#8B5CF6', // violet
+  '#10B981', // emerald
+  '#F97316', // orange-alt
+  '#6366F1', // indigo
+] as const;
+
 export const radius = {
   sm: 6,
   md: 8,

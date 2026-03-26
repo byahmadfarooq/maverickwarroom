@@ -23,14 +23,15 @@ export const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) =>
   return (
     <div style={{
       display: 'flex',
-      minHeight: '100vh',
+      height: '100vh',
+      overflow: 'hidden',
       background: colors.bg,
       color: colors.textPrimary,
       fontFamily: 'Inter, sans-serif',
     }}>
       <Sidebar collapsed={collapsed} onToggle={() => setCollapsed(!collapsed)} />
 
-      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+      <main style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, minHeight: 0, overflow: 'hidden' }}>
         {/* Header */}
         <header style={{
           padding: '0 28px',

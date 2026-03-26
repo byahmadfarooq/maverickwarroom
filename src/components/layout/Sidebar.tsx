@@ -36,7 +36,7 @@ export const Sidebar: React.FC<{ collapsed: boolean; onToggle: () => void }> = (
   return (
     <aside style={{
       width: collapsed ? 64 : 240,
-      minHeight: '100vh',
+      height: '100vh',
       background: colors.surface,
       borderRight: `1px solid ${colors.border}`,
       display: 'flex',

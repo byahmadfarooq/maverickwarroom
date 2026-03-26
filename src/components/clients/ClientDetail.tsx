@@ -60,11 +60,13 @@ export const ClientDetail: React.FC<Props> = ({ client, posts, onClose, onUpdate
   const totalEngagement = publishedPosts.reduce((s, p) => s + p.reactions + p.comments, 0);
   const avgImpressions = publishedPosts.length ? Math.round(totalImpressions / publishedPosts.length) : 0;
   const avgEngRate = totalImpressions > 0 ? totalEngagement / totalImpressions : 0;
-  const monthlyValue = client.billingType === 'retainer' ? client.retainer : client.projectValue;
+  const monthlyValue = client.billingType === 'retainer' ? (client.retainer ?? 0) : (client.projectValue ?? 0);
+  const clientActivities = client.activities ?? [];
+  const clientPillars = client.pillars ?? [];
 
   const addActivity = () => {
     const activity: Activity = { id: genId(), date: actDate, type: actType, notes: actNotes };
-    onUpdate({ activities: [...client.activities, activity] });
+    onUpdate({ activities: [...clientActivities, activity] });
     setShowAddActivity(false);
     setActNotes('');
   };
@@ -212,8 +214,8 @@ export const ClientDetail: React.FC<Props> = ({ client, posts, onClose, onUpdate
               <div style={kgSectionStyle}>
                 <div style={labelStyle}>Content Pillars</div>
                 <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                  {client.pillars.length > 0
-                    ? client.pillars.map((p) => <Badge key={p} color={colors.accent}>{p}</Badge>)
+                  {clientPillars.length > 0
+                    ? clientPillars.map((p) => <Badge key={p} color={colors.accent}>{p}</Badge>)
                     : <span style={{ fontSize: 13, color: colors.textMuted }}>None set</span>
                   }
                 </div>
@@ -518,7 +520,7 @@ export const ClientDetail: React.FC<Props> = ({ client, posts, onClose, onUpdate
               )}
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {[...client.activities].reverse().map((a) => (
+                {[...clientActivities].reverse().map((a) => (
                   <div key={a.id} style={{
                     padding: '10px 14px', background: colors.bg, borderRadius: radius.md,
                     border: `1px solid ${colors.border}`, fontSize: 13,
@@ -537,7 +539,7 @@ export const ClientDetail: React.FC<Props> = ({ client, posts, onClose, onUpdate
                     )}
                   </div>
                 ))}
-                {client.activities.length === 0 && (
+                {clientActivities.length === 0 && (
                   <div style={{
                     textAlign: 'center', color: colors.textMuted, fontSize: 13, padding: 32,
                   }}>

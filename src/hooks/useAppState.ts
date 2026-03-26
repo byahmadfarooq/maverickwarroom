@@ -3,6 +3,27 @@ import type { Prospect, InboundLead, Client, Post, Task, Settings, Section } fro
 import { loadFromStorage, saveToStorage, clearAllStorage } from '../utils/storage';
 import { sampleSettings, sampleProspects, sampleInbound, sampleClients, samplePosts, sampleTasks } from '../utils/sampleData';
 
+const emptyKG = {
+  targetDemographics: '', competitors: [], leadSource: '', brandVoice: '',
+  techStack: [], keyContacts: [], industryNotes: '', contentGoals: '',
+  idealCustomerProfile: '', tonePreferences: '', painPoints: '', uniqueSellingPoints: '',
+};
+
+// Ensure clients loaded from old localStorage have all required fields
+function sanitizeClients(raw: unknown[]): import('../types').Client[] {
+  return raw.map((c: any) => {
+    const merged = {
+      billingType: 'retainer', projectValue: 0, email: '',
+      churnDate: null, churnReason: null,
+      ...c,
+    };
+    merged.knowledgeGraph = { ...emptyKG, ...(c.knowledgeGraph ?? {}) };
+    merged.activities = c.activities ?? [];
+    merged.pillars = c.pillars ?? [];
+    return merged as import('../types').Client;
+  });
+}
+
 const defaultSettings: Settings = {
   name: '', linkedinUrl: '', email: '', currency: 'USD',
   goals: { monthlyMrr: 10000, monthlyNewClients: 2, weeklyDms: 30, weeklyPosts: 10, monthlyImpressions: 200000 },
@@ -13,7 +34,7 @@ const defaultSettings: Settings = {
 export function useAppState() {
   const [prospects, setProspects] = useState<Prospect[]>(() => loadFromStorage('prospects', []));
   const [inbound, setInbound] = useState<InboundLead[]>(() => loadFromStorage('inbound', []));
-  const [clients, setClients] = useState<Client[]>(() => loadFromStorage('clients', []));
+  const [clients, setClients] = useState<Client[]>(() => sanitizeClients(loadFromStorage<unknown[]>('clients', [])));
   const [posts, setPosts] = useState<Post[]>(() => loadFromStorage('posts', []));
   const [tasks, setTasks] = useState<Task[]>(() => loadFromStorage('tasks', []));
   const [settings, setSettings] = useState<Settings>(() => {

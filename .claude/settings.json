@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm create vite@latest . -- --template react-ts)",
+      "Bash(npm install)",
+      "Bash(npm install recharts react-router-dom uuid)",
+      "Bash(npm install --prefer-offline)",
+      "Bash(npm install recharts uuid)",
+      "Bash(npm install @types/uuid -D)",
+      "Bash(npx tsc --noEmit)",
+      "Bash(npx vite build)",
+      "Bash(npm run build)"
+    ]
+  }
+}

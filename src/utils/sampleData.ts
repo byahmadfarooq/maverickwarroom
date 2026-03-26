@@ -1,10 +1,16 @@
-import type { Prospect, InboundLead, Client, Post, Settings } from '../types';
+import type { Prospect, InboundLead, Client, Post, Task, Settings, KnowledgeGraph } from '../types';
 import { genId, today } from './helpers';
 
 const d = (offset: number): string => {
   const dt = new Date();
   dt.setDate(dt.getDate() + offset);
   return dt.toISOString().split('T')[0];
+};
+
+const emptyKG: KnowledgeGraph = {
+  targetDemographics: '', competitors: [], leadSource: '', brandVoice: '',
+  techStack: [], keyContacts: [], industryNotes: '', contentGoals: '',
+  idealCustomerProfile: '', tonePreferences: '', painPoints: '', uniqueSellingPoints: '',
 };
 
 export const sampleSettings: Settings = {
@@ -18,6 +24,11 @@ export const sampleSettings: Settings = {
     weeklyDms: 50,
     weeklyPosts: 15,
     monthlyImpressions: 500000,
+  },
+  finance: {
+    hourlyRate: 75,
+    exchangeRate: 278,
+    cacTotal: 500,
   },
   theme: 'dark',
 };
@@ -118,36 +129,55 @@ export const sampleInbound: InboundLead[] = [
 
 export const sampleClients: Client[] = [
   {
-    id: 'client-1', name: 'David Kim', company: 'NexGen Solutions', linkedinUrl: '',
-    retainer: 3500, status: 'active', startDate: d(-90), churnDate: null, churnReason: null,
+    id: 'client-1', name: 'David Kim', company: 'NexGen Solutions', linkedinUrl: '', email: 'david@nexgen.io',
+    retainer: 3500, billingType: 'retainer', projectValue: 0, status: 'active', startDate: d(-90),
+    churnDate: null, churnReason: null,
     pillars: ['Leadership', 'AI/Tech', 'Company Culture'],
     postingSchedule: 'Mon, Wed, Fri', notes: 'Great communicator, fast approvals',
+    knowledgeGraph: {
+      ...emptyKG,
+      targetDemographics: 'B2B SaaS founders, 25-45, Series A-C',
+      competitors: ['TechCorp', 'InnovateLabs'],
+      brandVoice: 'Authoritative yet approachable, data-driven',
+      contentGoals: 'Thought leadership, lead generation',
+    },
     activities: [
       { id: genId(), date: d(-7), type: 'meeting', notes: 'Monthly strategy review' },
     ],
     createdAt: d(-90), updatedAt: d(-7),
   },
   {
-    id: 'client-2', name: 'Emily Zhang', company: 'Quantum Capital', linkedinUrl: '',
-    retainer: 5000, status: 'active', startDate: d(-60), churnDate: null, churnReason: null,
+    id: 'client-2', name: 'Emily Zhang', company: 'Quantum Capital', linkedinUrl: '', email: 'emily@quantum.vc',
+    retainer: 5000, billingType: 'retainer', projectValue: 0, status: 'active', startDate: d(-60),
+    churnDate: null, churnReason: null,
     pillars: ['Venture Capital', 'Startup Advice', 'Market Trends'],
     postingSchedule: 'Tue, Thu', notes: 'High-touch client, premium service',
+    knowledgeGraph: {
+      ...emptyKG,
+      targetDemographics: 'Startup founders, early-stage investors',
+      brandVoice: 'Sharp, insightful, visionary',
+      contentGoals: 'Deal flow, brand awareness',
+    },
     activities: [],
     createdAt: d(-60), updatedAt: d(-7),
   },
   {
-    id: 'client-3', name: 'Robert Chen', company: 'BuildRight', linkedinUrl: '',
-    retainer: 2500, status: 'active', startDate: d(-120), churnDate: null, churnReason: null,
+    id: 'client-3', name: 'Robert Chen', company: 'BuildRight', linkedinUrl: '', email: 'robert@buildright.com',
+    retainer: 2500, billingType: 'retainer', projectValue: 0, status: 'active', startDate: d(-120),
+    churnDate: null, churnReason: null,
     pillars: ['Construction Tech', 'Entrepreneurship'],
     postingSchedule: 'Mon, Wed, Fri', notes: 'Long-term client, very loyal',
+    knowledgeGraph: emptyKG,
     activities: [],
     createdAt: d(-120), updatedAt: d(-14),
   },
   {
-    id: 'client-4', name: 'Anna White', company: 'FitTech', linkedinUrl: '',
-    retainer: 3000, status: 'churned', startDate: d(-180), churnDate: d(-30), churnReason: 'budget',
+    id: 'client-4', name: 'Anna White', company: 'FitTech', linkedinUrl: '', email: '',
+    retainer: 3000, billingType: 'retainer', projectValue: 0, status: 'churned', startDate: d(-180),
+    churnDate: d(-30), churnReason: 'budget',
     pillars: ['HealthTech', 'Fitness'],
     postingSchedule: 'Tue, Thu', notes: 'Budget cuts, might return Q3',
+    knowledgeGraph: emptyKG,
     activities: [],
     createdAt: d(-180), updatedAt: d(-30),
   },
@@ -160,7 +190,7 @@ export const samplePosts: Post[] = [
     status: 'published', scheduledDate: d(-5), publishedDate: d(-5),
     impressions: 12500, reactions: 234, comments: 45, saves: 67, shares: 23,
     profileViews: 89, linkClicks: 12, dmsFromPost: 3, leadsFromPost: 1,
-    postUrl: '', notes: '', trackingLog: [
+    postUrl: '', notes: '', imageUrl: '', trackingLog: [
       { id: genId(), date: d(-5), impressions: 2000, reactions: 50, comments: 10 },
       { id: genId(), date: d(-4), impressions: 8000, reactions: 150, comments: 30 },
       { id: genId(), date: d(-3), impressions: 12500, reactions: 234, comments: 45 },
@@ -173,7 +203,7 @@ export const samplePosts: Post[] = [
     status: 'published', scheduledDate: d(-3), publishedDate: d(-3),
     impressions: 28000, reactions: 456, comments: 89, saves: 120, shares: 45,
     profileViews: 156, linkClicks: 34, dmsFromPost: 5, leadsFromPost: 2,
-    postUrl: '', notes: 'Went semi-viral', trackingLog: [
+    postUrl: '', notes: 'Went semi-viral', imageUrl: '', trackingLog: [
       { id: genId(), date: d(-3), impressions: 5000, reactions: 100, comments: 20 },
       { id: genId(), date: d(-2), impressions: 18000, reactions: 300, comments: 60 },
       { id: genId(), date: d(-1), impressions: 28000, reactions: 456, comments: 89 },
@@ -186,16 +216,25 @@ export const samplePosts: Post[] = [
     status: 'published', scheduledDate: d(-2), publishedDate: d(-2),
     impressions: 8900, reactions: 178, comments: 34, saves: 45, shares: 12,
     profileViews: 67, linkClicks: 23, dmsFromPost: 2, leadsFromPost: 0,
-    postUrl: '', notes: '', trackingLog: [], commentLog: [], dmLog: [],
+    postUrl: '', notes: '', imageUrl: '', trackingLog: [], commentLog: [], dmLog: [],
     createdAt: d(-4), updatedAt: d(-1),
   },
   {
-    id: genId(), clientId: 'client-1', title: 'Company Culture is Your Competitive Advantage',
+    id: genId(), clientId: 'personal', title: 'How I Built a $15K/mo Ghostwriting Business',
+    content: 'Here\'s my journey building a LinkedIn ghostwriting agency...', pillar: 'Personal Brand',
+    status: 'published', scheduledDate: d(-4), publishedDate: d(-4),
+    impressions: 35000, reactions: 620, comments: 112, saves: 180, shares: 67,
+    profileViews: 234, linkClicks: 45, dmsFromPost: 8, leadsFromPost: 3,
+    postUrl: '', notes: 'Best personal post this month', imageUrl: '', trackingLog: [], commentLog: [], dmLog: [],
+    createdAt: d(-6), updatedAt: d(-2),
+  },
+  {
+    id: genId(), clientId: 'client-1', title: 'Company Culture Is Your Competitive Advantage',
     content: 'Culture eats strategy for breakfast...', pillar: 'Company Culture',
     status: 'scheduled', scheduledDate: d(1), publishedDate: null,
     impressions: 0, reactions: 0, comments: 0, saves: 0, shares: 0,
     profileViews: 0, linkClicks: 0, dmsFromPost: 0, leadsFromPost: 0,
-    postUrl: '', notes: '', trackingLog: [], commentLog: [], dmLog: [],
+    postUrl: '', notes: '', imageUrl: '', trackingLog: [], commentLog: [], dmLog: [],
     createdAt: d(-2), updatedAt: d(-2),
   },
   {
@@ -204,25 +243,56 @@ export const samplePosts: Post[] = [
     status: 'drafting', scheduledDate: d(3), publishedDate: null,
     impressions: 0, reactions: 0, comments: 0, saves: 0, shares: 0,
     profileViews: 0, linkClicks: 0, dmsFromPost: 0, leadsFromPost: 0,
-    postUrl: '', notes: 'Need client review', trackingLog: [], commentLog: [], dmLog: [],
+    postUrl: '', notes: 'Need client review', imageUrl: '', trackingLog: [], commentLog: [], dmLog: [],
     createdAt: d(-1), updatedAt: d(-1),
   },
   {
-    id: genId(), clientId: 'client-3', title: 'How Technology is Transforming Construction',
+    id: genId(), clientId: 'client-3', title: 'How Technology Is Transforming Construction',
     content: 'The construction industry is ripe for disruption...', pillar: 'Construction Tech',
     status: 'published', scheduledDate: d(-1), publishedDate: d(-1),
     impressions: 5600, reactions: 98, comments: 23, saves: 34, shares: 8,
     profileViews: 45, linkClicks: 11, dmsFromPost: 1, leadsFromPost: 0,
-    postUrl: '', notes: '', trackingLog: [], commentLog: [], dmLog: [],
+    postUrl: '', notes: '', imageUrl: '', trackingLog: [], commentLog: [], dmLog: [],
     createdAt: d(-3), updatedAt: today(),
   },
   {
     id: genId(), clientId: 'client-3', title: 'The Entrepreneurial Mindset in Construction',
     content: 'What building a company taught me about building buildings...', pillar: 'Entrepreneurship',
-    status: 'ready', scheduledDate: d(2), publishedDate: null,
+    status: 'review', scheduledDate: d(2), publishedDate: null,
     impressions: 0, reactions: 0, comments: 0, saves: 0, shares: 0,
     profileViews: 0, linkClicks: 0, dmsFromPost: 0, leadsFromPost: 0,
-    postUrl: '', notes: '', trackingLog: [], commentLog: [], dmLog: [],
+    postUrl: '', notes: '', imageUrl: '', trackingLog: [], commentLog: [], dmLog: [],
     createdAt: d(-1), updatedAt: d(-1),
+  },
+];
+
+export const sampleTasks: Task[] = [
+  {
+    id: genId(), title: 'Write LinkedIn bio update', description: 'Update personal LinkedIn headline and summary',
+    category: 'personal', clientId: null, status: 'todo', priority: 'medium',
+    dueDate: d(2), timeEntries: [], timerRunning: false, timerStartedAt: null,
+    createdAt: d(-1), updatedAt: d(-1),
+  },
+  {
+    id: genId(), title: 'Draft 3 posts for David Kim', description: 'Q2 content batch for NexGen Solutions',
+    category: 'client', clientId: 'client-1', status: 'in_progress', priority: 'high',
+    dueDate: d(1), timeEntries: [
+      { id: genId(), date: d(-1), hours: 2.5, isManual: true, notes: 'Research and outline' },
+    ], timerRunning: false, timerStartedAt: null,
+    createdAt: d(-2), updatedAt: d(-1),
+  },
+  {
+    id: genId(), title: 'Strategy call prep for Quantum Capital', description: 'Prepare slides and analytics report',
+    category: 'client', clientId: 'client-2', status: 'todo', priority: 'urgent',
+    dueDate: d(0), timeEntries: [], timerRunning: false, timerStartedAt: null,
+    createdAt: d(-1), updatedAt: d(-1),
+  },
+  {
+    id: genId(), title: 'Outbound DM campaign - Week 12', description: 'Send 50 personalized DMs to SaaS founders',
+    category: 'personal', clientId: null, status: 'in_progress', priority: 'high',
+    dueDate: d(3), timeEntries: [
+      { id: genId(), date: d(-1), hours: 1.0, isManual: true, notes: 'First 15 DMs' },
+    ], timerRunning: false, timerStartedAt: null,
+    createdAt: d(-2), updatedAt: d(-1),
   },
 ];

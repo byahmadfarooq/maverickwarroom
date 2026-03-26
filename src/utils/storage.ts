@@ -3,6 +3,7 @@ const KEYS = {
   inbound: 'lbc_inbound',
   clients: 'lbc_clients',
   posts: 'lbc_posts',
+  tasks: 'lbc_tasks',
   settings: 'lbc_settings',
 } as const;
 

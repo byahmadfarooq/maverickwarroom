@@ -1,16 +1,16 @@
 import React, { useState } from 'react';
 import { useApp } from '../../hooks/AppContext';
-import { colors } from '../../utils/theme';
-import { Card, Btn, Badge, StatusBadge, EmptyState } from '../shared/FormElements';
+import { colors, radius } from '../../utils/theme';
+import { Card, Btn, Badge, StatusBadge, EmptyState, SearchBar, Select } from '../shared/FormElements';
 import { Modal } from '../shared/Modal';
 import { ClientForm } from './ClientForm';
 import { ClientDetail } from './ClientDetail';
-import { PlusIcon, SearchIcon } from '../shared/Icons';
-import { formatCurrency, formatDate, isThisMonth } from '../../utils/helpers';
+import { PlusIcon } from '../shared/Icons';
+import { formatCurrency, formatNumber, formatDate, formatDualCurrency, isThisMonth } from '../../utils/helpers';
 import type { Client } from '../../types';
 
 export const Clients: React.FC = () => {
-  const { clients, setClients, updateClient, deleteClient, posts, toast } = useApp();
+  const { clients, setClients, updateClient, deleteClient, posts, settings, toast } = useApp();
   const [showForm, setShowForm] = useState(false);
   const [editingClient, setEditingClient] = useState<Client | null>(null);
   const [detailClient, setDetailClient] = useState<Client | null>(null);
@@ -19,7 +19,10 @@ export const Clients: React.FC = () => {
 
   const filtered = clients.filter((c) => {
     if (statusFilter !== 'all' && c.status !== statusFilter) return false;
-    if (search && !c.name.toLowerCase().includes(search.toLowerCase()) && !c.company.toLowerCase().includes(search.toLowerCase())) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      if (!c.name.toLowerCase().includes(q) && !c.company.toLowerCase().includes(q)) return false;
+    }
     return true;
   });
 
@@ -35,81 +38,184 @@ export const Clients: React.FC = () => {
     setEditingClient(null);
   };
 
+  const rate = settings.finance.exchangeRate;
+
   return (
     <div>
       {/* Search + Filter + Add */}
-      <div style={{ display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap' }}>
-        <div style={{ flex: 1, minWidth: 200, position: 'relative' }}>
-          <SearchIcon size={16} style={{ position: 'absolute', left: 10, top: 9, color: colors.textSecondary }} />
-          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search clients..."
-            style={{ width: '100%', padding: '8px 12px 8px 32px', background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 6, color: colors.textPrimary, fontSize: 14, outline: 'none', boxSizing: 'border-box' }} />
-        </div>
-        <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-          style={{ padding: '8px 12px', background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: 6, color: colors.textPrimary, fontSize: 14, outline: 'none' }}>
+      <div style={{
+        display: 'flex', gap: 12, marginBottom: 20, alignItems: 'center', flexWrap: 'wrap',
+      }}>
+        <SearchBar value={search} onChange={setSearch} placeholder="Search clients..." />
+        <Select
+          value={statusFilter}
+          onChange={(e) => setStatusFilter(e.target.value)}
+          style={{ width: 'auto', minWidth: 140 }}
+        >
           <option value="all">All Status</option>
           <option value="active">Active</option>
           <option value="paused">Paused</option>
           <option value="churned">Churned</option>
-        </select>
-        <Btn onClick={() => { setEditingClient(null); setShowForm(true); }}><PlusIcon size={14} /> Add Client</Btn>
+        </Select>
+        <Btn onClick={() => { setEditingClient(null); setShowForm(true); }}>
+          <PlusIcon size={14} /> Add Client
+        </Btn>
       </div>
 
       {/* Client Cards Grid */}
       {filtered.length === 0 ? (
-        <EmptyState message="No clients found." action="Add Client" onAction={() => setShowForm(true)} />
+        <EmptyState
+          message="No clients found. Add your first client to get started."
+          action="Add Client"
+          onAction={() => setShowForm(true)}
+        />
       ) : (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: 16 }}>
+        <div style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gap: 16,
+        }}>
           {filtered.map((c) => {
             const clientPosts = posts.filter((p) => p.clientId === c.id);
-            const postsThisMonth = clientPosts.filter((p) => p.publishedDate && isThisMonth(p.publishedDate)).length;
+            const postsThisMonth = clientPosts.filter(
+              (p) => p.publishedDate && isThisMonth(p.publishedDate)
+            ).length;
             const totalImpressions = clientPosts.reduce((s, p) => s + p.impressions, 0);
+            const monthlyValue = c.billingType === 'retainer' ? c.retainer : c.projectValue;
 
             return (
-              <Card key={c.id} onClick={() => setDetailClient(c)} style={{ cursor: 'pointer', transition: 'border-color 0.15s' }}
-                >
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+              <Card
+                key={c.id}
+                onClick={() => setDetailClient(c)}
+                style={{
+                  cursor: 'pointer',
+                  transition: 'border-color 0.2s, transform 0.2s, box-shadow 0.2s',
+                }}
+              >
+                {/* Header: Name, Company, Status */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+                  marginBottom: 14,
+                }}>
                   <div>
-                    <div style={{ fontWeight: 600, fontSize: 15, color: colors.textPrimary }}>{c.name}</div>
+                    <div style={{
+                      fontWeight: 700, fontSize: 15, color: colors.textPrimary,
+                      letterSpacing: -0.2, marginBottom: 2,
+                    }}>
+                      {c.name}
+                    </div>
                     <div style={{ fontSize: 13, color: colors.textSecondary }}>{c.company}</div>
                   </div>
                   <StatusBadge status={c.status} />
                 </div>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8, marginBottom: 12 }}>
+
+                {/* Value + Billing Type */}
+                <div style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  marginBottom: 14,
+                }}>
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: colors.success }}>{formatCurrency(c.retainer)}</div>
-                    <div style={{ fontSize: 11, color: colors.textSecondary }}>Monthly</div>
+                    <div style={{
+                      fontSize: 20, fontWeight: 700, color: colors.success, letterSpacing: -0.3,
+                    }}>
+                      {formatCurrency(monthlyValue)}
+                    </div>
+                    <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                      {formatDualCurrency(monthlyValue, rate)}
+                    </div>
+                  </div>
+                  <StatusBadge status={c.billingType} />
+                </div>
+
+                {/* Stats Row */}
+                <div style={{
+                  display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10,
+                  marginBottom: 14, padding: '10px 0',
+                  borderTop: `1px solid ${colors.border}`,
+                  borderBottom: `1px solid ${colors.border}`,
+                }}>
+                  <div>
+                    <div style={{
+                      fontSize: 16, fontWeight: 700, color: colors.textPrimary,
+                    }}>
+                      {postsThisMonth}
+                    </div>
+                    <div style={{
+                      fontSize: 11, color: colors.textSecondary, textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}>
+                      Posts This Month
+                    </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: colors.textPrimary }}>{postsThisMonth}</div>
-                    <div style={{ fontSize: 11, color: colors.textSecondary }}>Posts/mo</div>
-                  </div>
-                  <div>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: colors.info }}>{totalImpressions > 1000 ? (totalImpressions / 1000).toFixed(1) + 'K' : totalImpressions}</div>
-                    <div style={{ fontSize: 11, color: colors.textSecondary }}>Impressions</div>
+                    <div style={{
+                      fontSize: 16, fontWeight: 700, color: colors.info,
+                    }}>
+                      {formatNumber(totalImpressions)}
+                    </div>
+                    <div style={{
+                      fontSize: 11, color: colors.textSecondary, textTransform: 'uppercase',
+                      letterSpacing: 0.5,
+                    }}>
+                      Total Impressions
+                    </div>
                   </div>
                 </div>
-                <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                  {c.pillars.map((p) => <Badge key={p} color={colors.accent}>{p}</Badge>)}
+
+                {/* Content Pillars */}
+                {c.pillars.length > 0 && (
+                  <div style={{
+                    display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 10,
+                  }}>
+                    {c.pillars.map((p) => (
+                      <Badge key={p} color={colors.accent}>{p}</Badge>
+                    ))}
+                  </div>
+                )}
+
+                {/* Start Date */}
+                <div style={{
+                  fontSize: 11, color: colors.textMuted, marginTop: 4,
+                }}>
+                  Since {formatDate(c.startDate)}
                 </div>
-                <div style={{ fontSize: 11, color: colors.textSecondary, marginTop: 8 }}>Since {formatDate(c.startDate)}</div>
               </Card>
             );
           })}
         </div>
       )}
 
-      <Modal open={showForm} onClose={() => { setShowForm(false); setEditingClient(null); }} title={editingClient ? 'Edit Client' : 'Add Client'} width={550}>
-        <ClientForm client={editingClient} onSave={handleSave} onCancel={() => { setShowForm(false); setEditingClient(null); }} />
+      {/* Add/Edit Modal */}
+      <Modal
+        open={showForm}
+        onClose={() => { setShowForm(false); setEditingClient(null); }}
+        title={editingClient ? 'Edit Client' : 'Add Client'}
+        width={680}
+      >
+        <ClientForm
+          client={editingClient}
+          onSave={handleSave}
+          onCancel={() => { setShowForm(false); setEditingClient(null); }}
+        />
       </Modal>
 
+      {/* Detail Slide-in */}
       {detailClient && (
         <ClientDetail
           client={clients.find((c) => c.id === detailClient.id) || detailClient}
           posts={posts.filter((p) => p.clientId === detailClient.id)}
           onClose={() => setDetailClient(null)}
           onUpdate={(updates) => updateClient(detailClient.id, updates)}
-          onEdit={() => { setEditingClient(detailClient); setShowForm(true); setDetailClient(null); }}
-          onDelete={() => { deleteClient(detailClient.id); setDetailClient(null); toast('Client deleted'); }}
+          onEdit={() => {
+            setEditingClient(detailClient);
+            setShowForm(true);
+            setDetailClient(null);
+          }}
+          onDelete={() => {
+            deleteClient(detailClient.id);
+            setDetailClient(null);
+            toast('Client deleted');
+          }}
         />
       )}
     </div>

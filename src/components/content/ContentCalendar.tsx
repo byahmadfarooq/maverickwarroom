@@ -1,154 +1,466 @@
-import React, { useState } from 'react';
-import { useApp } from '../../hooks/AppContext';
-import { colors } from '../../utils/theme';
-import { Card, Btn, StatusBadge, EmptyState } from '../shared/FormElements';
+import React, { useState, useContext, useMemo } from 'react';
+import { colors, radius } from '../../utils/theme';
+import { AppCtx } from '../../hooks/AppContext';
+import { genId, now, today, formatDate, formatDateShort, statusLabel, dateStr } from '../../utils/helpers';
+import { Btn, Card, Badge, SectionHeader, SearchBar, Field, Input, TextArea, Select, EmptyState, StatusBadge, TabBar } from '../shared/FormElements';
 import { Modal } from '../shared/Modal';
-import { PostForm } from './PostForm';
-import { PlusIcon, ChevronLeftIcon, ChevronRightIcon } from '../shared/Icons';
-import { getWeekDates, dateStr, formatDateShort } from '../../utils/helpers';
-import type { Post } from '../../types';
+import { PlusIcon, EditIcon, TrashIcon, CalendarIcon, EyeIcon, ChevronLeftIcon, ChevronRightIcon, FileTextIcon } from '../shared/Icons';
+import type { Post, PostStatus } from '../../types';
 
-const statusColors: Record<string, string> = {
-  idea: colors.textSecondary,
+/* ── Constants ── */
+
+const STATUSES: PostStatus[] = ['idea', 'drafting', 'review', 'ready', 'scheduled', 'published'];
+
+const STATUS_COLOR: Record<PostStatus, string> = {
+  idea: colors.textMuted,
   drafting: colors.warning,
+  review: colors.purple,
   ready: colors.info,
-  scheduled: '#A855F7',
+  scheduled: colors.accent,
   published: colors.success,
 };
 
-// Assign a color per client for visual distinction
-const clientColors = [colors.accent, colors.info, '#A855F7', colors.success, colors.warning, '#EC4899'];
+const STATUS_MUTED: Record<PostStatus, string> = {
+  idea: colors.textMuted + '18',
+  drafting: colors.warningMuted,
+  review: colors.purpleMuted,
+  ready: colors.infoMuted,
+  scheduled: colors.accentMuted,
+  published: colors.successMuted,
+};
+
+const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+/* ── Helpers ── */
+
+function getMonthGrid(year: number, month: number): (Date | null)[] {
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  const startPad = firstDay.getDay(); // 0=Sun
+  const cells: (Date | null)[] = [];
+  for (let i = 0; i < startPad; i++) cells.push(null);
+  for (let d = 1; d <= lastDay.getDate(); d++) cells.push(new Date(year, month, d));
+  // pad end to fill last row
+  while (cells.length % 7 !== 0) cells.push(null);
+  return cells;
+}
+
+function monthYearLabel(year: number, month: number): string {
+  return new Date(year, month, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+/* ── Empty Post Factory ── */
+
+function emptyPost(overrides?: Partial<Post>): Post {
+  return {
+    id: genId(),
+    clientId: 'personal',
+    title: '',
+    content: '',
+    pillar: '',
+    status: 'idea',
+    scheduledDate: today(),
+    publishedDate: null,
+    impressions: 0,
+    reactions: 0,
+    comments: 0,
+    saves: 0,
+    shares: 0,
+    profileViews: 0,
+    linkClicks: 0,
+    dmsFromPost: 0,
+    leadsFromPost: 0,
+    postUrl: '',
+    notes: '',
+    imageUrl: '',
+    trackingLog: [],
+    commentLog: [],
+    dmLog: [],
+    createdAt: now(),
+    updatedAt: now(),
+    ...overrides,
+  };
+}
+
+/* ── Main Component ── */
 
 export const ContentCalendar: React.FC = () => {
-  const { posts, setPosts, updatePost, deletePost, clients, toast } = useApp();
-  const [weekOffset, setWeekOffset] = useState(0);
-  const [view, setView] = useState<'week' | 'month'>('week');
-  const [showForm, setShowForm] = useState(false);
+  const { posts, setPosts, updatePost, deletePost, clients, settings, toast } = useContext(AppCtx);
+
+  // View state
+  const [activeTab, setActiveTab] = useState<string>('kanban');
+  const [search, setSearch] = useState('');
+  const [clientFilter, setClientFilter] = useState<string>('all');
+
+  // Calendar state
+  const [calYear, setCalYear] = useState(() => new Date().getFullYear());
+  const [calMonth, setCalMonth] = useState(() => new Date().getMonth());
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+
+  // Kanban drag state
+  const [dragPostId, setDragPostId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<PostStatus | null>(null);
+
+  // Modal state
+  const [modalOpen, setModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
-  const [selectedDate, setSelectedDate] = useState<string | null>(null);
-  const [dragId, setDragId] = useState<string | null>(null);
 
-  const weekDates = getWeekDates(weekOffset);
-  const dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  const todayStr = dateStr(new Date());
+  // Form state
+  const [form, setForm] = useState<Post>(() => emptyPost());
 
-  const clientColorMap: Record<string, string> = {};
-  clients.forEach((c, i) => { clientColorMap[c.id] = clientColors[i % clientColors.length]; });
+  const todayStr = today();
 
-  const handleSave = (post: Post) => {
+  /* ── Filtering ── */
+
+  const filtered = useMemo(() => {
+    let list = posts;
+    if (clientFilter !== 'all') {
+      list = list.filter((p) => p.clientId === clientFilter);
+    }
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      list = list.filter(
+        (p) =>
+          p.title.toLowerCase().includes(q) ||
+          p.content.toLowerCase().includes(q) ||
+          p.pillar.toLowerCase().includes(q) ||
+          p.notes.toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [posts, clientFilter, search]);
+
+  /* ── Client name helper ── */
+
+  const clientName = (clientId: string): string => {
+    if (clientId === 'personal') return 'Personal';
+    const c = clients.find((cl) => cl.id === clientId);
+    return c ? c.name : 'Unknown';
+  };
+
+  /* ── Modal open/close ── */
+
+  const openCreate = (overrides?: Partial<Post>) => {
+    const p = emptyPost(overrides);
+    setEditingPost(null);
+    setForm(p);
+    setModalOpen(true);
+  };
+
+  const openEdit = (post: Post) => {
+    setEditingPost(post);
+    setForm({ ...post });
+    setModalOpen(true);
+  };
+
+  const closeModal = () => {
+    setModalOpen(false);
+    setEditingPost(null);
+  };
+
+  const setField = (key: keyof Post, value: string | number | null) => {
+    setForm((f) => ({ ...f, [key]: value }));
+  };
+
+  const handleSave = () => {
+    if (!form.title.trim()) {
+      toast('Title is required', 'error');
+      return;
+    }
+    const updated: Post = {
+      ...form,
+      title: form.title.trim(),
+      publishedDate: form.status === 'published' ? (form.publishedDate || form.scheduledDate || today()) : form.publishedDate,
+      updatedAt: now(),
+    };
     if (editingPost) {
-      updatePost(post.id, post);
+      updatePost(editingPost.id, updated);
       toast('Post updated');
     } else {
-      setPosts((prev) => [...prev, post]);
-      toast('Post added');
+      setPosts((prev) => [...prev, updated]);
+      toast('Post created');
     }
-    setShowForm(false);
-    setEditingPost(null);
+    closeModal();
   };
 
-  const handleDrop = (date: string) => {
-    if (dragId) {
-      updatePost(dragId, { scheduledDate: date });
-      toast('Post rescheduled');
-      setDragId(null);
+  const handleDelete = () => {
+    if (editingPost) {
+      deletePost(editingPost.id);
+      toast('Post deleted');
+      closeModal();
     }
   };
 
-  const openNewPost = (date?: string) => {
-    setEditingPost(null);
-    setSelectedDate(date || todayStr);
-    setShowForm(true);
+  /* ── Kanban drag-and-drop ── */
+
+  const onDragStart = (e: React.DragEvent, postId: string) => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', postId);
+    setDragPostId(postId);
   };
 
-  // Month view data
-  const getMonthDates = () => {
-    const now = new Date();
-    now.setMonth(now.getMonth() + weekOffset);
-    const year = now.getFullYear();
-    const month = now.getMonth();
-    const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
-    const startPad = (firstDay.getDay() + 6) % 7;
-    const dates: (Date | null)[] = [];
-    for (let i = 0; i < startPad; i++) dates.push(null);
-    for (let d = 1; d <= lastDay.getDate(); d++) dates.push(new Date(year, month, d));
-    return dates;
+  const onDragOver = (e: React.DragEvent, status: PostStatus) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverCol(status);
   };
+
+  const onDragLeave = () => {
+    setDragOverCol(null);
+  };
+
+  const onDrop = (e: React.DragEvent, status: PostStatus) => {
+    e.preventDefault();
+    const postId = e.dataTransfer.getData('text/plain') || dragPostId;
+    if (postId) {
+      updatePost(postId, { status });
+      toast(`Moved to ${statusLabel(status)}`);
+    }
+    setDragPostId(null);
+    setDragOverCol(null);
+  };
+
+  /* ── Calendar navigation ── */
+
+  const prevMonth = () => {
+    if (calMonth === 0) {
+      setCalMonth(11);
+      setCalYear((y) => y - 1);
+    } else {
+      setCalMonth((m) => m - 1);
+    }
+  };
+
+  const nextMonth = () => {
+    if (calMonth === 11) {
+      setCalMonth(0);
+      setCalYear((y) => y + 1);
+    } else {
+      setCalMonth((m) => m + 1);
+    }
+  };
+
+  const goToday = () => {
+    const n = new Date();
+    setCalYear(n.getFullYear());
+    setCalMonth(n.getMonth());
+  };
+
+  /* ── Calendar data ── */
+
+  const calendarGrid = useMemo(() => getMonthGrid(calYear, calMonth), [calYear, calMonth]);
+
+  const postsForDay = (ds: string): Post[] => filtered.filter((p) => p.scheduledDate === ds || p.publishedDate === ds);
+
+  /* ── Pillar list from selected client ── */
+
+  const currentPillars = useMemo(() => {
+    if (form.clientId === 'personal') return [];
+    const c = clients.find((cl) => cl.id === form.clientId);
+    return c?.pillars || [];
+  }, [form.clientId, clients]);
+
+  /* ── Render ── */
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-          <Btn variant="secondary" size="sm" onClick={() => setWeekOffset(weekOffset - 1)}><ChevronLeftIcon size={14} /></Btn>
-          <Btn variant="secondary" size="sm" onClick={() => setWeekOffset(0)}>Today</Btn>
-          <Btn variant="secondary" size="sm" onClick={() => setWeekOffset(weekOffset + 1)}><ChevronRightIcon size={14} /></Btn>
-          {view === 'week' && (
-            <span style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginLeft: 8 }}>
-              {formatDateShort(dateStr(weekDates[0]))} — {formatDateShort(dateStr(weekDates[6]))}
-            </span>
-          )}
-        </div>
-        <div style={{ display: 'flex', gap: 8 }}>
-          <div style={{ display: 'flex', background: colors.surface, borderRadius: 6, border: `1px solid ${colors.border}` }}>
-            <button onClick={() => setView('week')} style={{ padding: '6px 12px', border: 'none', borderRadius: '6px 0 0 6px', background: view === 'week' ? colors.accent : 'transparent', color: view === 'week' ? '#fff' : colors.textSecondary, cursor: 'pointer', fontSize: 13, fontFamily: 'Inter, sans-serif' }}>Week</button>
-            <button onClick={() => setView('month')} style={{ padding: '6px 12px', border: 'none', borderRadius: '0 6px 6px 0', background: view === 'month' ? colors.accent : 'transparent', color: view === 'month' ? '#fff' : colors.textSecondary, cursor: 'pointer', fontSize: 13, fontFamily: 'Inter, sans-serif' }}>Month</button>
-          </div>
-          <Btn onClick={() => openNewPost()}><PlusIcon size={14} /> New Post</Btn>
+      <SectionHeader
+        title="Content Pipeline"
+        subtitle={`${posts.length} total posts`}
+        actions={
+          <Btn onClick={() => openCreate()}>
+            <PlusIcon size={14} /> New Post
+          </Btn>
+        }
+      />
+
+      {/* Tab bar + filters row */}
+      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 16, marginBottom: 4, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <TabBar
+            tabs={[
+              { key: 'kanban', label: 'Kanban' },
+              { key: 'calendar', label: 'Calendar' },
+            ]}
+            active={activeTab}
+            onChange={setActiveTab}
+          />
         </div>
       </div>
 
-      {/* Week View */}
-      {view === 'week' && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 8 }}>
-          {weekDates.map((date, i) => {
-            const ds = dateStr(date);
-            const dayPosts = posts.filter((p) => p.scheduledDate === ds);
-            const isToday = ds === todayStr;
+      {/* Filters row */}
+      <div style={{ display: 'flex', gap: 10, marginBottom: 20, flexWrap: 'wrap', alignItems: 'center' }}>
+        <Select
+          value={clientFilter}
+          onChange={(e) => setClientFilter(e.target.value)}
+          style={{ width: 200 }}
+        >
+          <option value="all">All Clients</option>
+          <option value="personal">Personal</option>
+          {clients.map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </Select>
+        <SearchBar value={search} onChange={setSearch} placeholder="Search posts..." />
+      </div>
+
+      {/* ═══════════════════════════ KANBAN VIEW ═══════════════════════════ */}
+      {activeTab === 'kanban' && (
+        <div
+          style={{
+            display: 'grid',
+            gridTemplateColumns: `repeat(${STATUSES.length}, minmax(180px, 1fr))`,
+            gap: 10,
+            overflowX: 'auto',
+            paddingBottom: 8,
+          }}
+        >
+          {STATUSES.map((status) => {
+            const colPosts = filtered.filter((p) => p.status === status);
+            const colColor = STATUS_COLOR[status];
+            const isOver = dragOverCol === status;
 
             return (
               <div
-                key={ds}
-                onDragOver={(e) => e.preventDefault()}
-                onDrop={() => handleDrop(ds)}
+                key={status}
+                onDragOver={(e) => onDragOver(e, status)}
+                onDragLeave={onDragLeave}
+                onDrop={(e) => onDrop(e, status)}
                 style={{
-                  background: colors.surface, border: `1px solid ${isToday ? colors.accent : colors.border}`,
-                  borderRadius: 8, minHeight: 300, display: 'flex', flexDirection: 'column',
+                  background: isOver ? colColor + '0A' : colors.bg,
+                  border: `1px solid ${isOver ? colColor + '40' : colors.border}`,
+                  borderRadius: radius.lg,
+                  minHeight: 400,
+                  display: 'flex',
+                  flexDirection: 'column',
+                  transition: 'border-color 0.2s, background 0.2s',
                 }}
               >
-                <div style={{
-                  padding: '8px 10px', borderBottom: `1px solid ${colors.border}`, textAlign: 'center',
-                  background: isToday ? colors.accent + '15' : 'transparent',
-                }}>
-                  <div style={{ fontSize: 11, color: colors.textSecondary }}>{dayNames[i]}</div>
-                  <div style={{ fontSize: 16, fontWeight: 600, color: isToday ? colors.accent : colors.textPrimary }}>{date.getDate()}</div>
+                {/* Column header */}
+                <div
+                  style={{
+                    padding: '10px 12px',
+                    borderBottom: `2px solid ${colColor}`,
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                    <span
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 700,
+                        color: colColor,
+                        textTransform: 'uppercase',
+                        letterSpacing: 0.6,
+                      }}
+                    >
+                      {statusLabel(status)}
+                    </span>
+                    <span
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        width: 20,
+                        height: 20,
+                        borderRadius: radius.full,
+                        background: colColor + '20',
+                        color: colColor,
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {colPosts.length}
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => openCreate({ status })}
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      color: colColor,
+                      cursor: 'pointer',
+                      padding: 2,
+                      display: 'flex',
+                      alignItems: 'center',
+                      borderRadius: radius.sm,
+                    }}
+                    title={`Add ${statusLabel(status)}`}
+                  >
+                    <PlusIcon size={16} />
+                  </button>
                 </div>
-                <div style={{ flex: 1, padding: 6, display: 'flex', flexDirection: 'column', gap: 4 }}>
-                  {dayPosts.map((p) => {
-                    const client = clients.find((c) => c.id === p.clientId);
-                    return (
+
+                {/* Cards */}
+                <div style={{ flex: 1, padding: 8, display: 'flex', flexDirection: 'column', gap: 6, overflowY: 'auto' }}>
+                  {colPosts.length === 0 && (
+                    <div
+                      style={{
+                        textAlign: 'center',
+                        padding: '24px 8px',
+                        color: colors.textMuted,
+                        fontSize: 12,
+                        border: `1px dashed ${colors.border}`,
+                        borderRadius: radius.md,
+                      }}
+                    >
+                      No posts
+                    </div>
+                  )}
+                  {colPosts.map((post) => (
+                    <div
+                      key={post.id}
+                      draggable
+                      onDragStart={(e) => onDragStart(e, post.id)}
+                      onClick={() => openEdit(post)}
+                      style={{
+                        background: colors.surface,
+                        border: `1px solid ${colors.border}`,
+                        borderRadius: radius.md,
+                        padding: '10px 12px',
+                        cursor: 'grab',
+                        transition: 'border-color 0.2s, box-shadow 0.2s',
+                        borderLeft: `3px solid ${colColor}`,
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.borderColor = colors.borderHover;
+                        e.currentTarget.style.boxShadow = colors.shadow;
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.borderColor = colors.border;
+                        e.currentTarget.style.borderLeftColor = colColor;
+                        e.currentTarget.style.boxShadow = 'none';
+                      }}
+                    >
                       <div
-                        key={p.id}
-                        draggable
-                        onDragStart={() => setDragId(p.id)}
-                        onClick={() => { setEditingPost(p); setShowForm(true); }}
                         style={{
-                          padding: '6px 8px', borderRadius: 4, cursor: 'grab', fontSize: 11,
-                          borderLeft: `3px solid ${clientColorMap[p.clientId] || colors.accent}`,
-                          background: statusColors[p.status] + '15',
+                          fontSize: 13,
+                          fontWeight: 600,
+                          color: colors.textPrimary,
+                          marginBottom: 4,
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
                         }}
                       >
-                        <div style={{ fontWeight: 600, color: colors.textPrimary, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.title || 'Untitled'}</div>
-                        {client && <div style={{ color: clientColorMap[p.clientId], fontSize: 10 }}>{client.name}</div>}
-                        <StatusBadge status={p.status} />
+                        {post.title || 'Untitled'}
                       </div>
-                    );
-                  })}
-                  <button onClick={() => openNewPost(ds)} style={{
-                    border: `1px dashed ${colors.border}`, borderRadius: 4, background: 'transparent',
-                    color: colors.textSecondary, cursor: 'pointer', padding: 4, fontSize: 11, marginTop: 'auto',
-                  }}>+ Add</button>
+                      <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 6 }}>
+                        {clientName(post.clientId)}
+                      </div>
+                      <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+                        {post.pillar && <Badge color={colColor}>{post.pillar}</Badge>}
+                        {post.scheduledDate && (
+                          <span style={{ fontSize: 10, color: colors.textMuted, display: 'flex', alignItems: 'center', gap: 3 }}>
+                            <CalendarIcon size={10} />
+                            {formatDateShort(post.scheduledDate)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             );
@@ -156,84 +468,290 @@ export const ContentCalendar: React.FC = () => {
         </div>
       )}
 
-      {/* Month View */}
-      {view === 'month' && (
+      {/* ═══════════════════════════ CALENDAR VIEW ═══════════════════════════ */}
+      {activeTab === 'calendar' && (
         <div>
+          {/* Month navigation */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 12, marginBottom: 20 }}>
+            <Btn variant="ghost" size="sm" onClick={prevMonth}>
+              <ChevronLeftIcon size={18} />
+            </Btn>
+            <Btn variant="secondary" size="sm" onClick={goToday}>Today</Btn>
+            <span style={{ fontSize: 16, fontWeight: 700, color: colors.textPrimary, minWidth: 180, textAlign: 'center' }}>
+              {monthYearLabel(calYear, calMonth)}
+            </span>
+            <Btn variant="ghost" size="sm" onClick={nextMonth}>
+              <ChevronRightIcon size={18} />
+            </Btn>
+          </div>
+
+          {/* Day headers */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4, marginBottom: 4 }}>
-            {dayNames.map((d) => (
-              <div key={d} style={{ textAlign: 'center', fontSize: 11, color: colors.textSecondary, padding: 4 }}>{d}</div>
+            {DAY_NAMES.map((d) => (
+              <div
+                key={d}
+                style={{
+                  textAlign: 'center',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  color: colors.textSecondary,
+                  padding: '6px 0',
+                  textTransform: 'uppercase',
+                  letterSpacing: 0.6,
+                }}
+              >
+                {d}
+              </div>
             ))}
           </div>
+
+          {/* Calendar grid */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: 4 }}>
-            {getMonthDates().map((date, i) => {
-              if (!date) return <div key={`empty-${i}`} />;
+            {calendarGrid.map((date, i) => {
+              if (!date) return <div key={`empty-${i}`} style={{ minHeight: 90 }} />;
               const ds = dateStr(date);
-              const dayPosts = posts.filter((p) => p.scheduledDate === ds);
+              const dayPosts = postsForDay(ds);
               const isToday = ds === todayStr;
+              const isSelected = ds === selectedDay;
+
               return (
-                <div key={ds} onClick={() => openNewPost(ds)} style={{
-                  background: colors.surface, border: `1px solid ${isToday ? colors.accent : colors.border}`,
-                  borderRadius: 6, minHeight: 60, padding: 4, cursor: 'pointer',
-                }}>
-                  <div style={{ fontSize: 11, fontWeight: 600, color: isToday ? colors.accent : colors.textPrimary }}>{date.getDate()}</div>
-                  {dayPosts.length > 0 && (
-                    <div style={{ fontSize: 10, color: colors.accent, fontWeight: 600 }}>{dayPosts.length} post{dayPosts.length > 1 ? 's' : ''}</div>
-                  )}
+                <div
+                  key={ds}
+                  onClick={() => setSelectedDay(isSelected ? null : ds)}
+                  style={{
+                    background: isSelected ? colors.surfaceHover : colors.surface,
+                    border: `1px solid ${isToday ? colors.accent : isSelected ? colors.borderHover : colors.border}`,
+                    borderRadius: radius.md,
+                    minHeight: 90,
+                    padding: 6,
+                    cursor: 'pointer',
+                    transition: 'border-color 0.2s, background 0.2s',
+                  }}
+                  onMouseEnter={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = colors.surfaceHover;
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) e.currentTarget.style.background = colors.surface;
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 600,
+                      color: isToday ? colors.accent : colors.textPrimary,
+                      marginBottom: 4,
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                    }}
+                  >
+                    <span>{date.getDate()}</span>
+                    {isToday && (
+                      <span style={{ fontSize: 9, color: colors.accent, fontWeight: 700, textTransform: 'uppercase' }}>Today</span>
+                    )}
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                    {dayPosts.slice(0, 3).map((p) => (
+                      <div
+                        key={p.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          openEdit(p);
+                        }}
+                        style={{
+                          padding: '2px 6px',
+                          borderRadius: radius.sm,
+                          fontSize: 10,
+                          fontWeight: 600,
+                          color: STATUS_COLOR[p.status],
+                          background: STATUS_MUTED[p.status],
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          cursor: 'pointer',
+                        }}
+                      >
+                        {p.title || 'Untitled'}
+                      </div>
+                    ))}
+                    {dayPosts.length > 3 && (
+                      <div style={{ fontSize: 10, color: colors.textMuted, fontWeight: 600 }}>
+                        +{dayPosts.length - 3} more
+                      </div>
+                    )}
+                  </div>
                 </div>
               );
             })}
           </div>
+
+          {/* Day detail panel */}
+          {selectedDay && (
+            <div style={{ marginTop: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                <h3 style={{ margin: 0, fontSize: 14, fontWeight: 700, color: colors.textPrimary }}>
+                  {formatDate(selectedDay)}
+                </h3>
+                <Btn size="sm" onClick={() => openCreate({ scheduledDate: selectedDay })}>
+                  <PlusIcon size={12} /> Add Post
+                </Btn>
+              </div>
+              {postsForDay(selectedDay).length === 0 ? (
+                <EmptyState
+                  message="No posts on this day."
+                  action="Create Post"
+                  onAction={() => openCreate({ scheduledDate: selectedDay })}
+                />
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                  {postsForDay(selectedDay).map((p) => (
+                    <Card key={p.id} onClick={() => openEdit(p)} style={{ padding: 14, cursor: 'pointer' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                        <div>
+                          <div style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 4 }}>
+                            {p.title || 'Untitled'}
+                          </div>
+                          <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 6 }}>
+                            {clientName(p.clientId)}
+                            {p.pillar && <span style={{ color: colors.textMuted }}> / {p.pillar}</span>}
+                          </div>
+                          {p.content && (
+                            <div
+                              style={{
+                                fontSize: 12,
+                                color: colors.textMuted,
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: 400,
+                              }}
+                            >
+                              {p.content}
+                            </div>
+                          )}
+                        </div>
+                        <StatusBadge status={p.status} />
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {/* Content Library */}
-      <div style={{ marginTop: 32 }}>
-        <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Content Library</h3>
-        {posts.length === 0 ? (
-          <EmptyState message="No posts yet." action="Create Post" onAction={() => openNewPost()} />
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-              <thead>
-                <tr style={{ borderBottom: `1px solid ${colors.border}` }}>
-                  {['Client', 'Title', 'Pillar', 'Status', 'Date', 'Impressions', 'Eng.'].map((h) => (
-                    <th key={h} style={{ padding: '8px 10px', textAlign: 'left', color: colors.textSecondary, fontWeight: 600, fontSize: 11 }}>{h}</th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {posts.sort((a, b) => (b.scheduledDate || '').localeCompare(a.scheduledDate || '')).map((p) => {
-                  const client = clients.find((c) => c.id === p.clientId);
-                  return (
-                    <tr key={p.id} onClick={() => { setEditingPost(p); setShowForm(true); }}
-                      style={{ borderBottom: `1px solid ${colors.border}`, cursor: 'pointer' }}
-                      onMouseEnter={(e) => (e.currentTarget.style.background = colors.surfaceHover)}
-                      onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}>
-                      <td style={{ padding: '8px 10px', color: clientColorMap[p.clientId] || colors.textPrimary }}>{client?.name || '-'}</td>
-                      <td style={{ padding: '8px 10px', color: colors.textPrimary, fontWeight: 500 }}>{p.title || 'Untitled'}</td>
-                      <td style={{ padding: '8px 10px' }}>{p.pillar && <span style={{ color: colors.accent }}>{p.pillar}</span>}</td>
-                      <td style={{ padding: '8px 10px' }}><StatusBadge status={p.status} /></td>
-                      <td style={{ padding: '8px 10px', color: colors.textSecondary }}>{formatDateShort(p.scheduledDate)}</td>
-                      <td style={{ padding: '8px 10px', color: colors.textPrimary }}>{p.impressions > 0 ? p.impressions.toLocaleString() : '-'}</td>
-                      <td style={{ padding: '8px 10px', color: colors.textPrimary }}>{p.reactions + p.comments > 0 ? p.reactions + p.comments : '-'}</td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+      {/* ═══════════════════════════ POST MODAL ═══════════════════════════ */}
+      <Modal
+        open={modalOpen}
+        onClose={closeModal}
+        title={editingPost ? 'Edit Post' : 'New Post'}
+        width={620}
+      >
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Title" required>
+              <Input
+                value={form.title}
+                onChange={(e) => setField('title', e.target.value)}
+                placeholder="Post title"
+              />
+            </Field>
+            <Field label="Client">
+              <Select value={form.clientId} onChange={(e) => setField('clientId', e.target.value)}>
+                <option value="personal">Personal</option>
+                {clients.map((c) => (
+                  <option key={c.id} value={c.id}>{c.name}</option>
+                ))}
+              </Select>
+            </Field>
           </div>
-        )}
-      </div>
 
-      <Modal open={showForm} onClose={() => { setShowForm(false); setEditingPost(null); }} title={editingPost ? 'Edit Post' : 'New Post'} width={600}>
-        <PostForm
-          post={editingPost}
-          clients={clients}
-          defaultDate={selectedDate || todayStr}
-          onSave={handleSave}
-          onDelete={editingPost ? () => { deletePost(editingPost.id); setShowForm(false); setEditingPost(null); toast('Post deleted'); } : undefined}
-          onCancel={() => { setShowForm(false); setEditingPost(null); }}
-        />
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+            <Field label="Pillar">
+              {currentPillars.length > 0 ? (
+                <Select value={form.pillar} onChange={(e) => setField('pillar', e.target.value)}>
+                  <option value="">None</option>
+                  {currentPillars.map((p) => (
+                    <option key={p} value={p}>{p}</option>
+                  ))}
+                </Select>
+              ) : (
+                <Input
+                  value={form.pillar}
+                  onChange={(e) => setField('pillar', e.target.value)}
+                  placeholder="Content pillar"
+                />
+              )}
+            </Field>
+            <Field label="Status">
+              <Select value={form.status} onChange={(e) => setField('status', e.target.value as PostStatus)}>
+                {STATUSES.map((s) => (
+                  <option key={s} value={s}>{statusLabel(s)}</option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Scheduled Date">
+              <Input
+                type="date"
+                value={form.scheduledDate}
+                onChange={(e) => setField('scheduledDate', e.target.value)}
+              />
+            </Field>
+          </div>
+
+          <Field label="Content">
+            <TextArea
+              value={form.content}
+              onChange={(e) => setField('content', e.target.value)}
+              placeholder="Write your post content..."
+              style={{ minHeight: 120 }}
+            />
+          </Field>
+
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Image URL">
+              <Input
+                value={form.imageUrl}
+                onChange={(e) => setField('imageUrl', e.target.value)}
+                placeholder="https://..."
+              />
+            </Field>
+            <Field label="Post URL">
+              <Input
+                value={form.postUrl}
+                onChange={(e) => setField('postUrl', e.target.value)}
+                placeholder="https://linkedin.com/..."
+              />
+            </Field>
+          </div>
+
+          <Field label="Notes">
+            <TextArea
+              value={form.notes}
+              onChange={(e) => setField('notes', e.target.value)}
+              placeholder="Internal notes..."
+              style={{ minHeight: 60 }}
+            />
+          </Field>
+
+          {/* Actions */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
+            <div>
+              {editingPost && (
+                <Btn variant="danger" onClick={handleDelete}>
+                  <TrashIcon size={14} /> Delete
+                </Btn>
+              )}
+            </div>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <Btn variant="secondary" onClick={closeModal}>Cancel</Btn>
+              <Btn onClick={handleSave} disabled={!form.title.trim()}>
+                {editingPost ? 'Update' : 'Create'} Post
+              </Btn>
+            </div>
+          </div>
+        </div>
       </Modal>
     </div>
   );

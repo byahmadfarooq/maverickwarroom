@@ -1,317 +1,474 @@
-import React, { useState, useMemo } from 'react';
-import { useApp } from '../../hooks/AppContext';
-import { colors } from '../../utils/theme';
-import { Card } from '../shared/FormElements';
-import { formatCurrency, formatNumber, formatPercent, isLastNDays, daysBetween } from '../../utils/helpers';
-import {
-  LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer,
-  BarChart, Bar, PieChart, Pie, Cell, Legend,
-} from 'recharts';
+import React, { useState, useContext, useMemo } from 'react';
+import { AppCtx } from '../../hooks/AppContext';
+import { colors, radius } from '../../utils/theme';
+import { Card, StatCard, SectionHeader, TabBar, Badge } from '../shared/FormElements';
+import { DollarIcon, TrendingUpIcon, UsersIcon, BarChartIcon } from '../shared/Icons';
+import { formatCurrency, formatNumber, formatPercent, formatDate, daysBetween, today } from '../../utils/helpers';
+import type { Prospect, InboundLead, Client, Post } from '../../types';
 
-const COLORS = [colors.accent, colors.info, colors.success, colors.warning, '#A855F7', '#EC4899'];
+const COLORS = [colors.accent, colors.info, colors.success, colors.warning, colors.purple, colors.pink];
 
-type Range = '7d' | '30d' | '90d' | 'all';
+const thStyle: React.CSSProperties = {
+  padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600,
+  color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8,
+  borderBottom: `1px solid ${colors.border}`,
+};
+
+const tdStyle: React.CSSProperties = {
+  padding: '10px 12px', fontSize: 13, color: colors.textPrimary,
+  borderBottom: `1px solid ${colors.border}`,
+};
+
+const BarViz: React.FC<{ items: { label: string; value: number; color: string }[]; maxVal?: number }> = ({ items, maxVal }) => {
+  const max = maxVal ?? Math.max(...items.map((i) => i.value), 1);
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {items.map((item) => (
+        <div key={item.label} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{ width: 100, fontSize: 12, color: colors.textSecondary, textAlign: 'right', flexShrink: 0 }}>
+            {item.label}
+          </span>
+          <div style={{ flex: 1, height: 22, background: colors.bg, borderRadius: radius.sm, overflow: 'hidden' }}>
+            <div style={{
+              height: '100%', width: `${Math.max((item.value / max) * 100, 0)}%`,
+              background: item.color, borderRadius: radius.sm, transition: 'width 0.3s',
+              minWidth: item.value > 0 ? 4 : 0,
+            }} />
+          </div>
+          <span style={{ width: 40, fontSize: 12, fontWeight: 600, color: colors.textPrimary, textAlign: 'right' }}>
+            {item.value}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const TABS = [
+  { key: 'overview', label: 'Overview' },
+  { key: 'content', label: 'Content' },
+  { key: 'pipeline', label: 'Pipeline' },
+  { key: 'clients', label: 'Clients' },
+];
 
 export const Analytics: React.FC = () => {
-  const { prospects, inbound, clients, posts, settings } = useApp();
-  const [range, setRange] = useState<Range>('30d');
+  const { prospects, inbound, clients, posts, tasks, settings } = useContext(AppCtx);
+  const [tab, setTab] = useState<string>('overview');
 
-  const rangeDays = range === '7d' ? 7 : range === '30d' ? 30 : range === '90d' ? 90 : 99999;
-  const inRange = (d: string | null) => d ? (range === 'all' || isLastNDays(d, rangeDays)) : false;
+  const computed = useMemo(() => {
+    const activeClients = clients.filter((c: Client) => c.status === 'active');
+    const churnedClients = clients.filter((c: Client) => c.status === 'churned');
+    const mrr = activeClients.reduce((s: number, c: Client) => s + (c.billingType === 'retainer' ? c.retainer : 0), 0);
+    const oneTimeRev = activeClients.reduce((s: number, c: Client) => s + (c.billingType === 'one_time' ? c.projectValue : 0), 0);
+    const totalRevenue = mrr + oneTimeRev;
+    const publishedPosts = posts.filter((p: Post) => p.status === 'published');
+    const totalImpressions = publishedPosts.reduce((s: number, p: Post) => s + p.impressions, 0);
 
-  const activeClients = clients.filter((c) => c.status === 'active');
-  const mrr = activeClients.reduce((s, c) => s + c.retainer, 0);
-  const publishedPosts = posts.filter((p) => p.status === 'published' && inRange(p.publishedDate));
-  const totalImpressions = publishedPosts.reduce((s, p) => s + p.impressions, 0);
-  const totalEngagement = publishedPosts.reduce((s, p) => s + p.reactions + p.comments, 0);
+    // Outbound stages
+    const outboundStages = ['research', 'dm_sent', 'replied', 'call_booked', 'proposal_sent', 'negotiating', 'won', 'lost'] as const;
+    const outboundByStage = outboundStages.map((stage) => ({
+      label: stage.replace(/_/g, ' '),
+      count: prospects.filter((p: Prospect) => p.status === stage).length,
+    }));
 
-  // Revenue
-  const revenueByClient = activeClients.map((c) => ({ name: c.name, value: c.retainer }));
-  const churnedMrr = clients.filter((c) => c.status === 'churned' && inRange(c.churnDate)).reduce((s, c) => s + c.retainer, 0);
+    // Inbound stages
+    const inboundStages = ['new', 'contacted', 'qualified', 'call_booked', 'proposal_sent', 'won', 'lost', 'not_qualified'] as const;
+    const inboundByStage = inboundStages.map((stage) => ({
+      label: stage.replace(/_/g, ' '),
+      count: inbound.filter((l: InboundLead) => l.status === stage).length,
+    }));
 
-  // Pipeline
-  const pipelineValue = prospects.filter((p) => p.status !== 'lost' && p.status !== 'won').reduce((s, p) => s + p.dealValue, 0);
-  const stages = ['research', 'dm_sent', 'replied', 'call_booked', 'proposal_sent', 'negotiating', 'won'] as const;
-  const funnelData = stages.map((s) => ({
-    stage: s.replace(/_/g, ' '),
-    count: prospects.filter((p) => p.status === s).length,
-    value: prospects.filter((p) => p.status === s).reduce((sum, p) => sum + p.dealValue, 0),
-  }));
-  const wonProspects = prospects.filter((p) => p.status === 'won');
-  const avgSalesCycle = wonProspects.length > 0
-    ? Math.round(wonProspects.reduce((s, p) => s + daysBetween(p.firstContactDate, p.updatedAt.split('T')[0]), 0) / wonProspects.length)
-    : 0;
-  const winRate = (() => {
-    const closed = prospects.filter((p) => p.status === 'won' || p.status === 'lost').length;
-    return closed > 0 ? wonProspects.length / closed : 0;
-  })();
+    // Outbound metrics
+    const wonProspects = prospects.filter((p: Prospect) => p.status === 'won');
+    const lostProspects = prospects.filter((p: Prospect) => p.status === 'lost');
+    const closedOutbound = wonProspects.length + lostProspects.length;
+    const outboundConversion = closedOutbound > 0 ? wonProspects.length / closedOutbound : 0;
+    const avgTimeToClose = wonProspects.length > 0
+      ? Math.round(wonProspects.reduce((s: number, p: Prospect) => s + daysBetween(p.firstContactDate, p.updatedAt.split('T')[0]), 0) / wonProspects.length)
+      : 0;
+    const activePipelineValue = prospects
+      .filter((p: Prospect) => p.status !== 'won' && p.status !== 'lost')
+      .reduce((s: number, p: Prospect) => s + p.dealValue, 0);
 
-  // Content
-  const avgImpPerPost = publishedPosts.length ? Math.round(totalImpressions / publishedPosts.length) : 0;
-  const avgEngRate = totalImpressions > 0 ? totalEngagement / totalImpressions : 0;
+    // Inbound metrics
+    const wonInbound = inbound.filter((l: InboundLead) => l.status === 'won');
+    const lostInbound = inbound.filter((l: InboundLead) => l.status === 'lost');
+    const closedInbound = wonInbound.length + lostInbound.length;
+    const inboundConversion = closedInbound > 0 ? wonInbound.length / closedInbound : 0;
+    const avgTimeToQualify = (() => {
+      const qualified = inbound.filter((l: InboundLead) => l.status !== 'new');
+      if (qualified.length === 0) return 0;
+      return Math.round(qualified.reduce((s: number, l: InboundLead) => s + daysBetween(l.dateReceived, l.lastActionDate || l.dateReceived), 0) / qualified.length);
+    })();
 
-  // Pillar performance
-  const pillarMap: Record<string, { impressions: number; engagement: number; count: number }> = {};
-  publishedPosts.forEach((p) => {
-    const key = p.pillar || 'Other';
-    if (!pillarMap[key]) pillarMap[key] = { impressions: 0, engagement: 0, count: 0 };
-    pillarMap[key].impressions += p.impressions;
-    pillarMap[key].engagement += p.reactions + p.comments;
-    pillarMap[key].count++;
-  });
-  const pillarData = Object.entries(pillarMap).map(([name, d]) => ({ name, ...d }));
+    // Content analytics
+    const personalPosts = publishedPosts.filter((p: Post) => p.clientId === 'personal');
+    const clientPosts = publishedPosts.filter((p: Post) => p.clientId !== 'personal');
+    const postsByStatus: Record<string, number> = {};
+    posts.forEach((p: Post) => {
+      postsByStatus[p.status] = (postsByStatus[p.status] || 0) + 1;
+    });
 
-  // Outbound
-  const allOutboundActs = prospects.flatMap((p) => p.activities.filter((a) => inRange(a.date)));
-  const dmsSent = allOutboundActs.filter((a) => a.type === 'dm_sent' || a.type === 'follow_up').length;
-  const replies = allOutboundActs.filter((a) => a.type === 'they_replied').length;
-  const callsBooked = allOutboundActs.filter((a) => a.type === 'call_scheduled').length;
-  const proposalsSent = allOutboundActs.filter((a) => a.type === 'proposal_sent').length;
+    const topPosts = [...publishedPosts].sort((a, b) => b.impressions - a.impressions).slice(0, 10);
 
-  // Inbound
-  const inboundInRange = inbound.filter((l) => inRange(l.dateReceived));
-  const inboundBySource: Record<string, number> = {};
-  inboundInRange.forEach((l) => { inboundBySource[l.source] = (inboundBySource[l.source] || 0) + 1; });
-  const inboundSourceData = Object.entries(inboundBySource).map(([name, value]) => ({ name: name.replace(/_/g, ' '), value }));
-  const inboundConversion = (() => {
-    const closed = inboundInRange.filter((l) => l.status === 'won' || l.status === 'lost').length;
-    const won = inboundInRange.filter((l) => l.status === 'won').length;
-    return closed > 0 ? won / closed : 0;
-  })();
+    // Content velocity: posts published per week over last 12 weeks
+    const weeksBack = 12;
+    const now = new Date();
+    let totalPostsLast12Weeks = 0;
+    for (const p of publishedPosts) {
+      if (p.publishedDate) {
+        const diff = (now.getTime() - new Date(p.publishedDate).getTime()) / (7 * 86400000);
+        if (diff <= weeksBack) totalPostsLast12Weeks++;
+      }
+    }
+    const postsPerWeek = weeksBack > 0 ? totalPostsLast12Weeks / weeksBack : 0;
 
-  // Client Health
-  const retentionRate = clients.length > 0 ? activeClients.length / clients.length : 0;
-  const clientsByStatus = [
-    { name: 'Active', value: activeClients.length },
-    { name: 'Paused', value: clients.filter((c) => c.status === 'paused').length },
-    { name: 'Churned', value: clients.filter((c) => c.status === 'churned').length },
-  ].filter((d) => d.value > 0);
+    // Client analytics
+    const mrrByClient = activeClients
+      .filter((c: Client) => c.billingType === 'retainer')
+      .map((c: Client) => ({ name: c.name, value: c.retainer }))
+      .sort((a, b) => b.value - a.value);
 
-  const churnReasons: Record<string, number> = {};
-  clients.filter((c) => c.churnReason).forEach((c) => { churnReasons[c.churnReason!] = (churnReasons[c.churnReason!] || 0) + 1; });
-  const churnReasonData = Object.entries(churnReasons).map(([name, value]) => ({ name, value }));
+    const clientTenure = activeClients.map((c: Client) => ({
+      name: c.name,
+      months: Math.max(Math.round(daysBetween(c.startDate, today()) / 30), 1),
+    })).sort((a, b) => b.months - a.months);
 
-  // Goals
-  const goals = settings.goals;
-  const goalItems = [
-    { label: 'MRR', current: mrr, target: goals.monthlyMrr, format: (n: number) => formatCurrency(n) },
-    { label: 'Clients', current: activeClients.length, target: goals.monthlyNewClients, format: (n: number) => n.toString() },
-    { label: 'Weekly DMs', current: dmsSent, target: goals.weeklyDms, format: (n: number) => n.toString() },
-    { label: 'Weekly Posts', current: publishedPosts.length, target: goals.weeklyPosts, format: (n: number) => n.toString() },
-    { label: 'Impressions', current: totalImpressions, target: goals.monthlyImpressions, format: (n: number) => formatNumber(n) },
-  ];
+    const churnRate = clients.length > 0 ? churnedClients.length / clients.length : 0;
 
-  const tooltipStyle = { background: colors.bg, border: `1px solid ${colors.border}`, borderRadius: 6, color: colors.textPrimary };
+    return {
+      activeClients, churnedClients, mrr, totalRevenue, publishedPosts, totalImpressions,
+      outboundByStage, inboundByStage,
+      wonProspects, outboundConversion, avgTimeToClose, activePipelineValue,
+      wonInbound, inboundConversion, avgTimeToQualify,
+      personalPosts, clientPosts, postsByStatus, topPosts, postsPerWeek,
+      mrrByClient, clientTenure, churnRate,
+    };
+  }, [prospects, inbound, clients, posts, tasks, settings]);
+
+  const renderOverview = (): React.ReactNode => (
+    <>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 28 }}>
+        <StatCard
+          label="Total Revenue"
+          value={formatCurrency(computed.totalRevenue)}
+          color={colors.success}
+          icon={<DollarIcon size={18} style={{ color: colors.success }} />}
+        />
+        <StatCard
+          label="Total Clients"
+          value={computed.activeClients.length}
+          sub={`${clients.length} all-time`}
+          color={colors.info}
+          icon={<UsersIcon size={18} style={{ color: colors.info }} />}
+        />
+        <StatCard
+          label="Total Posts"
+          value={computed.publishedPosts.length}
+          sub={`${posts.length} total (all statuses)`}
+          color={colors.accent}
+          icon={<BarChartIcon size={18} style={{ color: colors.accent }} />}
+        />
+        <StatCard
+          label="Total Impressions"
+          value={formatNumber(computed.totalImpressions)}
+          color={colors.purple}
+          icon={<TrendingUpIcon size={18} style={{ color: colors.purple }} />}
+        />
+      </div>
+
+      {/* Pipeline Conversion Funnel */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 28 }}>
+        <Card>
+          <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            Outbound Funnel
+          </h4>
+          <BarViz
+            items={computed.outboundByStage.map((s, i) => ({
+              label: s.label, value: s.count, color: COLORS[i % COLORS.length],
+            }))}
+          />
+        </Card>
+        <Card>
+          <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            Inbound Funnel
+          </h4>
+          <BarViz
+            items={computed.inboundByStage.map((s, i) => ({
+              label: s.label, value: s.count, color: COLORS[i % COLORS.length],
+            }))}
+          />
+        </Card>
+      </div>
+
+      {/* Monthly Growth */}
+      <Card>
+        <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          Key Metrics
+        </h4>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 12 }}>
+          {[
+            { label: 'Win Rate (Outbound)', value: formatPercent(computed.outboundConversion) },
+            { label: 'Win Rate (Inbound)', value: formatPercent(computed.inboundConversion) },
+            { label: 'Pipeline Value', value: formatCurrency(computed.activePipelineValue) },
+            { label: 'Churn Rate', value: formatPercent(computed.churnRate) },
+            { label: 'Posts / Week', value: computed.postsPerWeek.toFixed(1) },
+          ].map((m) => (
+            <div key={m.label} style={{ padding: 12, background: colors.bg, borderRadius: radius.md }}>
+              <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>{m.label}</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: colors.textPrimary }}>{m.value}</div>
+            </div>
+          ))}
+        </div>
+      </Card>
+    </>
+  );
+
+  const renderContent = (): React.ReactNode => (
+    <>
+      {/* Personal vs Client split */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <StatCard label="Personal Posts" value={computed.personalPosts.length} color={colors.accent} />
+        <StatCard label="Client Posts" value={computed.clientPosts.length} color={colors.info} />
+        <StatCard
+          label="Personal Impressions"
+          value={formatNumber(computed.personalPosts.reduce((s, p) => s + p.impressions, 0))}
+          color={colors.accent}
+        />
+        <StatCard
+          label="Client Impressions"
+          value={formatNumber(computed.clientPosts.reduce((s, p) => s + p.impressions, 0))}
+          color={colors.info}
+        />
+      </div>
+
+      {/* Posts by Status */}
+      <Card style={{ marginBottom: 24 }}>
+        <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          Posts by Status
+        </h4>
+        <BarViz
+          items={Object.entries(computed.postsByStatus).map(([status, count], i) => ({
+            label: status.replace(/_/g, ' '),
+            value: count,
+            color: COLORS[i % COLORS.length],
+          }))}
+        />
+      </Card>
+
+      {/* Content Velocity */}
+      <Card style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+          <h4 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            Content Velocity
+          </h4>
+          <span style={{ fontSize: 22, fontWeight: 700, color: colors.accent }}>
+            {computed.postsPerWeek.toFixed(1)} <span style={{ fontSize: 12, fontWeight: 400, color: colors.textSecondary }}>posts/week</span>
+          </span>
+        </div>
+      </Card>
+
+      {/* Top Performing Posts */}
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 16px 0' }}>
+          <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            Top Performing Posts
+          </h4>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>#</th>
+                <th style={thStyle}>Title</th>
+                <th style={thStyle}>Client</th>
+                <th style={thStyle}>Impressions</th>
+                <th style={thStyle}>Reactions</th>
+                <th style={thStyle}>Comments</th>
+                <th style={thStyle}>Eng. Rate</th>
+              </tr>
+            </thead>
+            <tbody>
+              {computed.topPosts.map((p: Post, idx: number) => {
+                const client = clients.find((c: Client) => c.id === p.clientId);
+                const engRate = p.impressions > 0 ? (p.reactions + p.comments) / p.impressions : 0;
+                return (
+                  <tr key={p.id}>
+                    <td style={{ ...tdStyle, color: colors.textMuted, width: 30 }}>{idx + 1}</td>
+                    <td style={{ ...tdStyle, fontWeight: 600, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {p.title}
+                    </td>
+                    <td style={{ ...tdStyle, color: colors.textSecondary }}>
+                      {p.clientId === 'personal' ? 'Personal' : client?.name || '--'}
+                    </td>
+                    <td style={tdStyle}>{formatNumber(p.impressions)}</td>
+                    <td style={tdStyle}>{p.reactions}</td>
+                    <td style={tdStyle}>{p.comments}</td>
+                    <td style={{ ...tdStyle, color: engRate > 0.03 ? colors.success : colors.textPrimary }}>
+                      {formatPercent(engRate)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </>
+  );
+
+  const renderPipeline = (): React.ReactNode => (
+    <>
+      {/* Outbound */}
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Outbound Pipeline</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <StatCard label="Total Prospects" value={prospects.length} color={colors.textPrimary} />
+        <StatCard label="Won Deals" value={computed.wonProspects.length} color={colors.success} />
+        <StatCard label="Conversion Rate" value={formatPercent(computed.outboundConversion)} color={colors.accent} />
+        <StatCard label="Avg Days to Close" value={`${computed.avgTimeToClose}d`} color={colors.info} />
+        <StatCard label="Active Pipeline" value={formatCurrency(computed.activePipelineValue)} color={colors.warning} />
+      </div>
+
+      <Card style={{ marginBottom: 28 }}>
+        <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          Prospects by Stage
+        </h4>
+        <BarViz
+          items={computed.outboundByStage.map((s, i) => ({
+            label: s.label, value: s.count, color: COLORS[i % COLORS.length],
+          }))}
+        />
+      </Card>
+
+      {/* Inbound */}
+      <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Inbound Pipeline</h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+        <StatCard label="Total Leads" value={inbound.length} color={colors.textPrimary} />
+        <StatCard label="Won Leads" value={computed.wonInbound.length} color={colors.success} />
+        <StatCard label="Conversion Rate" value={formatPercent(computed.inboundConversion)} color={colors.accent} />
+        <StatCard label="Avg Days to Qualify" value={`${computed.avgTimeToQualify}d`} color={colors.info} />
+      </div>
+
+      <Card style={{ marginBottom: 28 }}>
+        <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          Leads by Stage
+        </h4>
+        <BarViz
+          items={computed.inboundByStage.map((s, i) => ({
+            label: s.label, value: s.count, color: COLORS[i % COLORS.length],
+          }))}
+        />
+      </Card>
+
+      {/* Combined */}
+      <Card>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div>
+            <div style={{ fontSize: 11, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 }}>
+              Combined Pipeline Value
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 700, color: colors.accent }}>
+              {formatCurrency(computed.activePipelineValue)}
+            </div>
+          </div>
+          <div style={{ textAlign: 'right' }}>
+            <div style={{ fontSize: 11, color: colors.textSecondary, marginBottom: 4 }}>Total Active Deals</div>
+            <div style={{ fontSize: 22, fontWeight: 700, color: colors.textPrimary }}>
+              {prospects.filter((p: Prospect) => p.status !== 'won' && p.status !== 'lost').length +
+                inbound.filter((l: InboundLead) => l.status !== 'won' && l.status !== 'lost' && l.status !== 'not_qualified').length}
+            </div>
+          </div>
+        </div>
+      </Card>
+    </>
+  );
+
+  const renderClients = (): React.ReactNode => (
+    <>
+      {/* Active vs Churned */}
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 24 }}>
+        <StatCard label="Active Clients" value={computed.activeClients.length} color={colors.success} />
+        <StatCard label="Churned Clients" value={computed.churnedClients.length} color={colors.error} />
+        <StatCard label="Total Clients" value={clients.length} color={colors.textPrimary} />
+        <StatCard label="Churn Rate" value={formatPercent(computed.churnRate)} color={computed.churnRate > 0.2 ? colors.error : colors.success} />
+      </div>
+
+      {/* MRR Breakdown */}
+      <Card style={{ marginBottom: 24 }}>
+        <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+          MRR Breakdown by Client
+        </h4>
+        {computed.mrrByClient.length === 0 ? (
+          <div style={{ padding: 16, textAlign: 'center', color: colors.textSecondary, fontSize: 13 }}>
+            No retainer clients.
+          </div>
+        ) : (
+          <>
+            <BarViz
+              items={computed.mrrByClient.map((c, i) => ({
+                label: c.name, value: c.value, color: COLORS[i % COLORS.length],
+              }))}
+            />
+            <div style={{ marginTop: 12, paddingTop: 12, borderTop: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between' }}>
+              <span style={{ fontSize: 13, color: colors.textSecondary }}>Total MRR</span>
+              <span style={{ fontSize: 16, fontWeight: 700, color: colors.success }}>
+                {formatCurrency(computed.mrrByClient.reduce((s, c) => s + c.value, 0))}
+              </span>
+            </div>
+          </>
+        )}
+      </Card>
+
+      {/* Client Tenure */}
+      <Card style={{ padding: 0, overflow: 'hidden' }}>
+        <div style={{ padding: '16px 16px 0' }}>
+          <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            Client Tenure
+          </h4>
+        </div>
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead>
+              <tr>
+                <th style={thStyle}>Client</th>
+                <th style={thStyle}>Months Active</th>
+                <th style={thStyle}>Tenure</th>
+              </tr>
+            </thead>
+            <tbody>
+              {computed.clientTenure.map((c) => {
+                const maxMonths = Math.max(...computed.clientTenure.map((x) => x.months), 1);
+                return (
+                  <tr key={c.name}>
+                    <td style={{ ...tdStyle, fontWeight: 600 }}>{c.name}</td>
+                    <td style={tdStyle}>{c.months} mo</td>
+                    <td style={{ ...tdStyle, width: '40%' }}>
+                      <div style={{ height: 16, background: colors.bg, borderRadius: radius.sm, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', width: `${(c.months / maxMonths) * 100}%`,
+                          background: colors.success, borderRadius: radius.sm, transition: 'width 0.3s',
+                        }} />
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </Card>
+    </>
+  );
 
   return (
     <div>
-      {/* Date Range */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 24 }}>
-        {([['7d', 'Last 7 Days'], ['30d', 'Last 30 Days'], ['90d', 'Last 90 Days'], ['all', 'All Time']] as const).map(([k, l]) => (
-          <button key={k} onClick={() => setRange(k)} style={{
-            padding: '6px 14px', border: `1px solid ${range === k ? colors.accent : colors.border}`,
-            borderRadius: 6, background: range === k ? colors.accent + '15' : colors.surface,
-            color: range === k ? colors.accent : colors.textSecondary, cursor: 'pointer',
-            fontSize: 13, fontWeight: 500, fontFamily: 'Inter, sans-serif',
-          }}>{l}</button>
-        ))}
-      </div>
+      <SectionHeader title="Analytics" subtitle="Comprehensive business intelligence" />
+      <TabBar tabs={TABS} active={tab} onChange={setTab} />
 
-      {/* Revenue */}
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Revenue</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 16 }}>
-        {[
-          { label: 'Current MRR', value: formatCurrency(mrr), color: colors.success },
-          { label: 'Pipeline', value: formatCurrency(pipelineValue), color: colors.accent },
-          { label: 'Churned MRR', value: formatCurrency(churnedMrr), color: colors.error },
-        ].map((m) => (
-          <Card key={m.label}>
-            <div style={{ fontSize: 11, color: colors.textSecondary }}>{m.label}</div>
-            <div style={{ fontSize: 22, fontWeight: 700, color: m.color }}>{m.value}</div>
-          </Card>
-        ))}
-      </div>
-      {revenueByClient.length > 0 && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
-          <Card>
-            <h4 style={{ margin: '0 0 8px', fontSize: 13, color: colors.textSecondary }}>REVENUE BY CLIENT</h4>
-            <div style={{ height: 200 }}>
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={revenueByClient} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={70} label={({ name, value }) => `${name}: ${formatCurrency(value)}`}>
-                    {revenueByClient.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-          <Card>
-            <h4 style={{ margin: '0 0 8px', fontSize: 13, color: colors.textSecondary }}>PIPELINE FUNNEL</h4>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
-              {funnelData.map((d, i) => {
-                const maxCount = Math.max(...funnelData.map((f) => f.count), 1);
-                return (
-                  <div key={d.stage} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ width: 80, fontSize: 11, color: colors.textSecondary, textAlign: 'right' }}>{d.stage}</span>
-                    <div style={{ flex: 1, height: 20, background: colors.bg, borderRadius: 4, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${(d.count / maxCount) * 100}%`, background: COLORS[i % COLORS.length], borderRadius: 4, transition: 'width 0.3s' }} />
-                    </div>
-                    <span style={{ fontSize: 12, fontWeight: 600, color: colors.textPrimary, width: 30 }}>{d.count}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {/* Pipeline Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginBottom: 32 }}>
-        {[
-          { label: 'Win Rate', value: formatPercent(winRate) },
-          { label: 'Avg Sales Cycle', value: `${avgSalesCycle}d` },
-          { label: 'DMs Sent', value: dmsSent },
-          { label: 'Reply Rate', value: formatPercent(dmsSent > 0 ? replies / dmsSent : 0) },
-          { label: 'Calls Booked', value: callsBooked },
-          { label: 'Proposals Sent', value: proposalsSent },
-        ].map((m) => (
-          <Card key={m.label}>
-            <div style={{ fontSize: 11, color: colors.textSecondary }}>{m.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: colors.textPrimary }}>{m.value}</div>
-          </Card>
-        ))}
-      </div>
-
-      {/* Content Performance */}
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Content Performance</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 12, marginBottom: 16 }}>
-        {[
-          { label: 'Impressions', value: formatNumber(totalImpressions) },
-          { label: 'Engagement', value: formatNumber(totalEngagement) },
-          { label: 'Posts Published', value: publishedPosts.length },
-          { label: 'Avg/Post', value: formatNumber(avgImpPerPost) },
-          { label: 'Avg Eng Rate', value: formatPercent(avgEngRate) },
-        ].map((m) => (
-          <Card key={m.label}>
-            <div style={{ fontSize: 11, color: colors.textSecondary }}>{m.label}</div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: colors.textPrimary }}>{m.value}</div>
-          </Card>
-        ))}
-      </div>
-      {pillarData.length > 0 && (
-        <Card style={{ marginBottom: 32 }}>
-          <h4 style={{ margin: '0 0 8px', fontSize: 13, color: colors.textSecondary }}>PERFORMANCE BY PILLAR</h4>
-          <div style={{ height: 200 }}>
-            <ResponsiveContainer>
-              <BarChart data={pillarData}>
-                <XAxis dataKey="name" stroke={colors.textSecondary} fontSize={11} />
-                <YAxis stroke={colors.textSecondary} fontSize={11} />
-                <Tooltip contentStyle={tooltipStyle} />
-                <Legend />
-                <Bar dataKey="impressions" fill={colors.accent} radius={[4, 4, 0, 0]} />
-                <Bar dataKey="engagement" fill={colors.info} radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </Card>
-      )}
-
-      {/* Inbound */}
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Inbound</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          {[
-            { label: 'Inbound Leads', value: inboundInRange.length },
-            { label: 'Conversion Rate', value: formatPercent(inboundConversion) },
-          ].map((m) => (
-            <Card key={m.label}>
-              <div style={{ fontSize: 11, color: colors.textSecondary }}>{m.label}</div>
-              <div style={{ fontSize: 20, fontWeight: 700, color: colors.textPrimary }}>{m.value}</div>
-            </Card>
-          ))}
-        </div>
-        {inboundSourceData.length > 0 && (
-          <Card>
-            <h4 style={{ margin: '0 0 8px', fontSize: 13, color: colors.textSecondary }}>BY SOURCE</h4>
-            <div style={{ height: 150 }}>
-              <ResponsiveContainer>
-                <PieChart>
-                  <Pie data={inboundSourceData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={55} label>
-                    {inboundSourceData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                  </Pie>
-                  <Tooltip contentStyle={tooltipStyle} />
-                  <Legend />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
-        )}
-      </div>
-
-      {/* Client Health */}
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Client Health</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 32 }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-          <Card><div style={{ fontSize: 11, color: colors.textSecondary }}>Retention Rate</div><div style={{ fontSize: 22, fontWeight: 700, color: colors.success }}>{formatPercent(retentionRate)}</div></Card>
-          <Card><div style={{ fontSize: 11, color: colors.textSecondary }}>Active Clients</div><div style={{ fontSize: 22, fontWeight: 700, color: colors.textPrimary }}>{activeClients.length}</div></Card>
-        </div>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          {clientsByStatus.length > 0 && (
-            <Card>
-              <h4 style={{ margin: '0 0 4px', fontSize: 12, color: colors.textSecondary }}>BY STATUS</h4>
-              <div style={{ height: 120 }}>
-                <ResponsiveContainer>
-                  <PieChart>
-                    <Pie data={clientsByStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={40} label>
-                      {clientsByStatus.map((_, i) => <Cell key={i} fill={[colors.success, colors.warning, colors.error][i]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={tooltipStyle} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          )}
-          {churnReasonData.length > 0 && (
-            <Card>
-              <h4 style={{ margin: '0 0 4px', fontSize: 12, color: colors.textSecondary }}>CHURN REASONS</h4>
-              <div style={{ height: 120 }}>
-                <ResponsiveContainer>
-                  <PieChart>
-                    <Pie data={churnReasonData} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={40} label>
-                      {churnReasonData.map((_, i) => <Cell key={i} fill={COLORS[i % COLORS.length]} />)}
-                    </Pie>
-                    <Tooltip contentStyle={tooltipStyle} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
-          )}
-        </div>
-      </div>
-
-      {/* Goal Tracking */}
-      <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Goal Tracking</h3>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: 12 }}>
-        {goalItems.map((g) => {
-          const pct = g.target > 0 ? Math.min(g.current / g.target, 1) : 0;
-          const onTrack = pct >= 0.7;
-          return (
-            <Card key={g.label}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-                <span style={{ fontSize: 12, color: colors.textSecondary }}>{g.label}</span>
-                <span style={{ fontSize: 12, color: onTrack ? colors.success : colors.warning }}>{onTrack ? 'On Track' : 'Behind'}</span>
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: colors.textPrimary, marginBottom: 4 }}>
-                {g.format(g.current)} <span style={{ fontSize: 12, fontWeight: 400, color: colors.textSecondary }}>/ {g.format(g.target)}</span>
-              </div>
-              <div style={{ height: 6, background: colors.bg, borderRadius: 3, overflow: 'hidden' }}>
-                <div style={{ height: '100%', width: `${pct * 100}%`, background: onTrack ? colors.success : colors.warning, borderRadius: 3, transition: 'width 0.3s' }} />
-              </div>
-            </Card>
-          );
-        })}
-      </div>
+      {tab === 'overview' && renderOverview()}
+      {tab === 'content' && renderContent()}
+      {tab === 'pipeline' && renderPipeline()}
+      {tab === 'clients' && renderClients()}
     </div>
   );
 };

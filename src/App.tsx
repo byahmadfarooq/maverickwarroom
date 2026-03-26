@@ -9,6 +9,8 @@ import { Clients } from './components/clients/Clients';
 import { ContentCalendar } from './components/content/ContentCalendar';
 import { PostPerformance } from './components/posts/PostPerformance';
 import { Analytics } from './components/analytics/Analytics';
+import { TaskManager } from './components/tasks/TaskManager';
+import { Finance } from './components/finance/Finance';
 import { SettingsSection } from './components/settings/Settings';
 
 const SectionRouter: React.FC = () => {
@@ -21,6 +23,8 @@ const SectionRouter: React.FC = () => {
     case 'content': return <ContentCalendar />;
     case 'posts': return <PostPerformance />;
     case 'analytics': return <Analytics />;
+    case 'tasks': return <TaskManager />;
+    case 'finance': return <Finance />;
     case 'settings': return <SettingsSection />;
     default: return <Dashboard />;
   }

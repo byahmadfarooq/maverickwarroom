@@ -1,3 +1,4 @@
+// ── Activity ──
 export interface Activity {
   id: string;
   date: string;
@@ -18,6 +19,7 @@ export interface Activity {
   notes: string;
 }
 
+// ── Prospects ──
 export type ProspectStatus =
   | 'research'
   | 'dm_sent'
@@ -54,6 +56,7 @@ export interface Prospect {
   updatedAt: string;
 }
 
+// ── Inbound ──
 export type InboundSource =
   | 'post_comment'
   | 'dm'
@@ -90,14 +93,42 @@ export interface InboundLead {
   updatedAt: string;
 }
 
+// ── Client Knowledge Graph ──
+export interface KeyContact {
+  name: string;
+  role: string;
+  email: string;
+  phone: string;
+}
+
+export interface KnowledgeGraph {
+  targetDemographics: string;
+  competitors: string[];
+  leadSource: string;
+  brandVoice: string;
+  techStack: string[];
+  keyContacts: KeyContact[];
+  industryNotes: string;
+  contentGoals: string;
+  idealCustomerProfile: string;
+  tonePreferences: string;
+  painPoints: string;
+  uniqueSellingPoints: string;
+}
+
+// ── Client ──
 export type ClientStatus = 'active' | 'paused' | 'churned';
+export type BillingType = 'retainer' | 'one_time';
 
 export interface Client {
   id: string;
   name: string;
   company: string;
   linkedinUrl: string;
+  email: string;
   retainer: number;
+  billingType: BillingType;
+  projectValue: number;
   status: ClientStatus;
   startDate: string;
   churnDate: string | null;
@@ -105,12 +136,14 @@ export interface Client {
   pillars: string[];
   postingSchedule: string;
   notes: string;
+  knowledgeGraph: KnowledgeGraph;
   activities: Activity[];
   createdAt: string;
   updatedAt: string;
 }
 
-export type PostStatus = 'idea' | 'drafting' | 'ready' | 'scheduled' | 'published';
+// ── Posts ──
+export type PostStatus = 'idea' | 'drafting' | 'review' | 'ready' | 'scheduled' | 'published';
 
 export interface TrackingEntry {
   id: string;
@@ -143,7 +176,7 @@ export interface DmEntry {
 
 export interface Post {
   id: string;
-  clientId: string;
+  clientId: string; // 'personal' for personal posts
   title: string;
   content: string;
   pillar: string;
@@ -161,6 +194,7 @@ export interface Post {
   leadsFromPost: number;
   postUrl: string;
   notes: string;
+  imageUrl: string;
   trackingLog: TrackingEntry[];
   commentLog: CommentEntry[];
   dmLog: DmEntry[];
@@ -168,6 +202,42 @@ export interface Post {
   updatedAt: string;
 }
 
+// ── Tasks ──
+export type TaskStatus = 'todo' | 'in_progress' | 'done';
+export type TaskCategory = 'personal' | 'client';
+
+export interface TimeEntry {
+  id: string;
+  date: string;
+  hours: number;
+  isManual: boolean;
+  notes: string;
+}
+
+export interface Task {
+  id: string;
+  title: string;
+  description: string;
+  category: TaskCategory;
+  clientId: string | null;
+  status: TaskStatus;
+  priority: 'low' | 'medium' | 'high' | 'urgent';
+  dueDate: string;
+  timeEntries: TimeEntry[];
+  timerRunning: boolean;
+  timerStartedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ── Finance ──
+export interface FinanceSettings {
+  hourlyRate: number;
+  exchangeRate: number; // 1 USD = X PKR
+  cacTotal: number; // total marketing/sales spend
+}
+
+// ── Settings ──
 export interface Settings {
   name: string;
   linkedinUrl: string;
@@ -180,9 +250,11 @@ export interface Settings {
     weeklyPosts: number;
     monthlyImpressions: number;
   };
+  finance: FinanceSettings;
   theme: 'dark' | 'light';
 }
 
+// ── Navigation ──
 export type Section =
   | 'dashboard'
   | 'outbound'
@@ -191,6 +263,8 @@ export type Section =
   | 'content'
   | 'posts'
   | 'analytics'
+  | 'tasks'
+  | 'finance'
   | 'settings';
 
 export interface AppState {
@@ -198,6 +272,7 @@ export interface AppState {
   inbound: InboundLead[];
   clients: Client[];
   posts: Post[];
+  tasks: Task[];
   settings: Settings;
   activeSection: Section;
 }

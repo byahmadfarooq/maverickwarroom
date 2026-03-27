@@ -8,9 +8,9 @@ import { ProspectDetail } from './ProspectDetail';
 import { PlusIcon, SendIcon, TargetIcon, DollarIcon, TrendingUpIcon } from '../shared/Icons';
 import {
   formatCurrency, formatDualCurrency, formatPercent, daysAgo, isOverdue,
-  isLastNDays, isThisWeek, statusLabel, daysBetween,
+  isLastNDays, isThisWeek, statusLabel, daysBetween, genId, today,
 } from '../../utils/helpers';
-import type { Prospect, ProspectStatus } from '../../types';
+import type { Prospect, ProspectStatus, Activity } from '../../types';
 
 const COLUMNS: { key: ProspectStatus; label: string; color: string }[] = [
   { key: 'research', label: 'Research', color: colors.textSecondary },
@@ -75,12 +75,35 @@ export const OutboundTracker: React.FC = () => {
     };
   }, [prospects]);
 
+  // Map each Kanban column to the activity type it implies
+  const STATUS_ACTIVITY: Partial<Record<ProspectStatus, Activity['type']>> = {
+    dm_sent: 'dm_sent',
+    replied: 'they_replied',
+    call_booked: 'call_scheduled',
+    proposal_sent: 'proposal_sent',
+    won: 'won',
+    lost: 'lost',
+  };
+
   const handleDrop = (status: ProspectStatus) => {
-    if (dragId) {
-      updateProspect(dragId, { status });
-      toast(`Moved to ${statusLabel(status)}`);
-      setDragId(null);
+    if (!dragId) return;
+    const prospect = prospects.find((p) => p.id === dragId);
+    if (prospect && prospect.status !== status) {
+      const actType = STATUS_ACTIVITY[status];
+      const updates: Partial<Prospect> = { status };
+      if (actType) {
+        const newActivity: Activity = {
+          id: genId(),
+          date: today(),
+          type: actType,
+          notes: `Moved to ${statusLabel(status)}`,
+        };
+        updates.activities = [...prospect.activities, newActivity];
+      }
+      updateProspect(dragId, updates);
     }
+    toast(`Moved to ${statusLabel(status)}`);
+    setDragId(null);
   };
 
   const handleSave = (prospect: Prospect) => {

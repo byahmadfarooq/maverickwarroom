@@ -6,7 +6,7 @@ import { Modal } from '../shared/Modal';
 import { ClientForm } from './ClientForm';
 import { ClientDetail } from './ClientDetail';
 import { PlusIcon } from '../shared/Icons';
-import { formatCurrency, formatNumber, formatDate, formatDualCurrency, isThisMonth, getClientColor } from '../../utils/helpers';
+import { formatCurrency, formatNumber, formatDate, formatDualCurrency, isThisMonth, getClientColor, daysAgo, calcClientHealth } from '../../utils/helpers';
 import type { Client } from '../../types';
 
 export const Clients: React.FC = () => {
@@ -73,6 +73,11 @@ export const Clients: React.FC = () => {
             const postsThisMonth = clientPosts.filter((p) => p.publishedDate && isThisMonth(p.publishedDate)).length;
             const totalImpressions = clientPosts.reduce((s, p) => s + p.impressions, 0);
             const monthlyValue = c.billingType === 'retainer' ? c.retainer : c.projectValue;
+            const lastActivity = c.activities.length > 0
+              ? [...c.activities].sort((a, b) => b.date.localeCompare(a.date))[0]
+              : null;
+            const daysSinceActivity = lastActivity ? daysAgo(lastActivity.date) : null;
+            const health = calcClientHealth(c, clientPosts);
 
             return (
               <div
@@ -122,7 +127,21 @@ export const Clients: React.FC = () => {
                         <div style={{ fontSize: 12, color: colors.textSecondary }}>{c.company}</div>
                       </div>
                     </div>
-                    <StatusBadge status={c.status} />
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 4 }}>
+                      <StatusBadge status={c.status} />
+                      {c.status === 'active' && (
+                        <div style={{
+                          display: 'flex', alignItems: 'center', gap: 4,
+                          background: health.color + '18', border: `1px solid ${health.color}40`,
+                          borderRadius: radius.full, padding: '2px 8px',
+                        }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: health.color }} />
+                          <span style={{ fontSize: 11, fontWeight: 700, color: health.color, letterSpacing: 0.3 }}>
+                            {health.grade} · {health.score}
+                          </span>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   {/* Value + Billing Type */}
@@ -168,9 +187,22 @@ export const Clients: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Start Date */}
-                  <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 4 }}>
-                    Client since {formatDate(c.startDate)}
+                  {/* Start Date + Last Activity */}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginTop: 4 }}>
+                    <div style={{ fontSize: 11, color: colors.textMuted }}>
+                      Since {formatDate(c.startDate)}
+                    </div>
+                    {daysSinceActivity !== null ? (
+                      <div style={{
+                        fontSize: 11,
+                        color: daysSinceActivity > 14 ? colors.error : daysSinceActivity > 7 ? colors.warning : colors.success,
+                        fontWeight: 500,
+                      }}>
+                        {daysSinceActivity === 0 ? 'Active today' : `${daysSinceActivity}d since activity`}
+                      </div>
+                    ) : (
+                      <div style={{ fontSize: 11, color: colors.textMuted }}>No activity</div>
+                    )}
                   </div>
                 </div>
               </div>

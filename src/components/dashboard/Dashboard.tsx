@@ -4,7 +4,7 @@ import { colors, radius } from '../../utils/theme';
 import { Card, Btn, Badge, StatCard } from '../shared/FormElements';
 import {
   formatCurrency, formatDualCurrency, formatNumber, formatPercent,
-  isThisMonth, isLastNDays, isOverdue, isThisWeek, timeAgo,
+  isThisMonth, isLastNDays, isOverdue, isThisWeek, timeAgo, today,
 } from '../../utils/helpers';
 import {
   DollarIcon, UsersIcon, TargetIcon, FileTextIcon, SendIcon,
@@ -19,14 +19,25 @@ const TasksIconSmall: React.FC<{ size?: number; style?: React.CSSProperties }> =
   </svg>
 );
 
-const ProgressBar: React.FC<{ value: number; max: number; color: string; label: string; displayValue: string }> = ({
-  value, max, color, label, displayValue,
+const ProgressBar: React.FC<{ value: number; max: number; color: string; label: string; displayValue: string; streak?: number }> = ({
+  value, max, color, label, displayValue, streak,
 }) => {
   const pct = max > 0 ? Math.min((value / max) * 100, 100) : 0;
   return (
     <div style={{ marginBottom: 16 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-        <span style={{ fontSize: 13, fontWeight: 500, color: colors.textPrimary }}>{label}</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ fontSize: 13, fontWeight: 500, color: colors.textPrimary }}>{label}</span>
+          {streak !== undefined && streak >= 2 && (
+            <span style={{
+              fontSize: 10, fontWeight: 700, padding: '1px 7px', borderRadius: 99,
+              background: streak >= 4 ? colors.successMuted : colors.warningMuted,
+              color: streak >= 4 ? colors.success : colors.warning,
+            }}>
+              🔥 {streak}w streak
+            </span>
+          )}
+        </div>
         <span style={{ fontSize: 12, color: colors.textSecondary }}>
           {displayValue} / {max.toLocaleString()}
         </span>
@@ -54,7 +65,7 @@ const ProgressBar: React.FC<{ value: number; max: number; color: string; label: 
 
 export const Dashboard: React.FC = () => {
   const {
-    prospects, inbound, clients, posts, tasks, settings,
+    prospects, inbound, clients, posts, tasks, invoices, settings,
     setActiveSection, loadSampleData,
   } = useApp();
 
@@ -92,6 +103,9 @@ export const Dashboard: React.FC = () => {
   const overdueFollowups = prospects.filter(
     (p) => isOverdue(p.nextFollowUp) && p.status !== 'won' && p.status !== 'lost'
   );
+  const inboundOverdueFollowups = inbound.filter(
+    (l) => l.nextFollowUp && isOverdue(l.nextFollowUp) && !['won', 'lost', 'not_qualified'].includes(l.status)
+  );
   const clientsNoPostsThisWeek = activeClients.filter((c) => {
     const clientPosts = posts.filter(
       (p) => p.clientId === c.id && p.publishedDate && isThisWeek(p.publishedDate)
@@ -99,7 +113,16 @@ export const Dashboard: React.FC = () => {
     return clientPosts.length === 0;
   });
   const unrespondedLeads = inbound.filter((l) => l.status === 'new');
-  const hasAttentionItems = overdueFollowups.length > 0 || clientsNoPostsThisWeek.length > 0 || unrespondedLeads.length > 0;
+  const tasksDueToday = tasks.filter(
+    (t) => t.dueDate === today() && t.status !== 'done'
+  );
+  const overdueInvoicesList = (invoices || []).filter(
+    (i) => i.status !== 'paid' && isOverdue(i.dueDate)
+  );
+  const hasAttentionItems =
+    overdueFollowups.length > 0 || inboundOverdueFollowups.length > 0 ||
+    clientsNoPostsThisWeek.length > 0 || unrespondedLeads.length > 0 ||
+    tasksDueToday.length > 0 || overdueInvoicesList.length > 0;
 
   // Recent activity feed
   type FeedItem = { icon: React.ReactNode; text: string; time: string; color: string };
@@ -151,6 +174,39 @@ export const Dashboard: React.FC = () => {
   const monthlyNewClients = clients.filter(
     (c) => c.status === 'active' && isThisMonth(c.startDate)
   ).length;
+
+  // Streak calculation: count consecutive weeks meeting each goal
+  const calcStreak = (weeklyTarget: number, countFn: (weekStart: Date) => number): number => {
+    let streak = 0;
+    const now = new Date();
+    for (let w = 0; w < 26; w++) { // check up to 26 weeks back
+      const weekStart = new Date(now);
+      weekStart.setDate(now.getDate() - now.getDay() - w * 7);
+      weekStart.setHours(0, 0, 0, 0);
+      const weekEnd = new Date(weekStart);
+      weekEnd.setDate(weekStart.getDate() + 7);
+      const count = countFn(weekStart);
+      if (count >= weeklyTarget) streak++;
+      else break;
+    }
+    return streak;
+  };
+
+  const dmStreak = goals ? calcStreak(goals.weeklyDms, (ws) => {
+    return prospects.flatMap((p) => p.activities).filter((a) => {
+      const d = new Date(a.date);
+      const ws2 = new Date(ws);
+      return (a.type === 'dm_sent') && d >= ws2 && d < new Date(ws2.getTime() + 7 * 86400000);
+    }).length;
+  }) : 0;
+
+  const postStreak = goals ? calcStreak(goals.weeklyPosts, (ws) => {
+    return posts.filter((p) => {
+      if (!p.publishedDate) return false;
+      const d = new Date(p.publishedDate);
+      return d >= ws && d < new Date(ws.getTime() + 7 * 86400000);
+    }).length;
+  }) : 0;
 
   const isEmpty = prospects.length === 0 && clients.length === 0 && posts.length === 0 && tasks.length === 0;
 
@@ -400,20 +456,47 @@ export const Dashboard: React.FC = () => {
             ))}
             {unrespondedLeads.map((l) => (
               <div key={l.id} style={{
-                fontSize: 13,
-                color: colors.textPrimary,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 10,
-                padding: '8px 12px',
-                background: colors.infoMuted,
-                borderRadius: radius.md,
-                border: `1px solid ${colors.info}22`,
+                fontSize: 13, color: colors.textPrimary, display: 'flex', alignItems: 'center',
+                gap: 10, padding: '8px 12px', background: colors.infoMuted,
+                borderRadius: radius.md, border: `1px solid ${colors.info}22`,
               }}>
                 <Badge color={colors.info}>New Lead</Badge>
                 <span><strong>{l.name}</strong> ({l.company}) - Not yet responded</span>
               </div>
             ))}
+            {inboundOverdueFollowups.map((l) => (
+              <div key={l.id} style={{
+                fontSize: 13, color: colors.textPrimary, display: 'flex', alignItems: 'center',
+                gap: 10, padding: '8px 12px', background: colors.errorMuted,
+                borderRadius: radius.md, border: `1px solid ${colors.error}22`,
+              }}>
+                <Badge color={colors.error}>Overdue</Badge>
+                <span>Follow up with inbound lead <strong>{l.name}</strong> ({l.company})</span>
+              </div>
+            ))}
+            {tasksDueToday.map((t) => (
+              <div key={t.id} style={{
+                fontSize: 13, color: colors.textPrimary, display: 'flex', alignItems: 'center',
+                gap: 10, padding: '8px 12px', background: colors.warningMuted,
+                borderRadius: radius.md, border: `1px solid ${colors.warning}22`,
+              }}>
+                <Badge color={colors.warning}>Due Today</Badge>
+                <span>Task: <strong>{t.title}</strong></span>
+              </div>
+            ))}
+            {overdueInvoicesList.map((inv) => {
+              const clientName = clients.find((c) => c.id === inv.clientId)?.name || 'Unknown';
+              return (
+                <div key={inv.id} style={{
+                  fontSize: 13, color: colors.textPrimary, display: 'flex', alignItems: 'center',
+                  gap: 10, padding: '8px 12px', background: colors.errorMuted,
+                  borderRadius: radius.md, border: `1px solid ${colors.error}22`,
+                }}>
+                  <Badge color={colors.error}>Overdue Invoice</Badge>
+                  <span><strong>{formatCurrency(inv.amount)}</strong> from {clientName} - {inv.description || 'Invoice'}</span>
+                </div>
+              );
+            })}
           </div>
         </Card>
       )}
@@ -562,6 +645,7 @@ export const Dashboard: React.FC = () => {
               max={goals.weeklyDms}
               color={colors.accent}
               displayValue={weeklyDmsSent.toString()}
+              streak={dmStreak}
             />
             <ProgressBar
               label="Weekly Posts"
@@ -569,6 +653,7 @@ export const Dashboard: React.FC = () => {
               max={goals.weeklyPosts}
               color={colors.purple}
               displayValue={weeklyPostsPublished.toString()}
+              streak={postStreak}
             />
             <ProgressBar
               label="Monthly Impressions"

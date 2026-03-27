@@ -5,7 +5,7 @@ import { genId, now, today, formatDate, formatDateShort, statusLabel, dateStr } 
 import { Btn, Card, Badge, SectionHeader, SearchBar, Field, Input, TextArea, Select, EmptyState, StatusBadge, TabBar } from '../shared/FormElements';
 import { Modal } from '../shared/Modal';
 import { PlusIcon, EditIcon, TrashIcon, CalendarIcon, EyeIcon, ChevronLeftIcon, ChevronRightIcon, FileTextIcon } from '../shared/Icons';
-import type { Post, PostStatus } from '../../types';
+import type { Post, PostStatus, PostTemplate } from '../../types';
 
 /* ── Constants ── */
 
@@ -85,7 +85,7 @@ function emptyPost(overrides?: Partial<Post>): Post {
 /* ── Main Component ── */
 
 export const ContentCalendar: React.FC = () => {
-  const { posts, setPosts, updatePost, deletePost, clients, settings, toast } = useContext(AppCtx);
+  const { posts, setPosts, updatePost, deletePost, clients, settings, toast, templates, setTemplates } = useContext(AppCtx);
 
   // View state
   const [activeTab, setActiveTab] = useState<string>('kanban');
@@ -104,6 +104,11 @@ export const ContentCalendar: React.FC = () => {
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editingPost, setEditingPost] = useState<Post | null>(null);
+
+  // Template modal state
+  const [templateModalOpen, setTemplateModalOpen] = useState(false);
+  const [templateForm, setTemplateForm] = useState<{ name: string; pillar: string; content: string; notes: string }>({ name: '', pillar: '', content: '', notes: '' });
+  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
 
   // Form state
   const [form, setForm] = useState<Post>(() => emptyPost());
@@ -252,6 +257,52 @@ export const ContentCalendar: React.FC = () => {
 
   const postsForDay = (ds: string): Post[] => filtered.filter((p) => p.scheduledDate === ds || p.publishedDate === ds);
 
+  /* ── Template helpers ── */
+
+  const saveAsTemplate = () => {
+    const t: PostTemplate = {
+      id: genId(), name: form.title || 'Untitled Template',
+      pillar: form.pillar, content: form.content, notes: form.notes,
+      createdAt: now(),
+    };
+    setTemplates((prev) => [...prev, t]);
+    toast('Saved as template');
+  };
+
+  const useTemplate = (t: PostTemplate) => {
+    openCreate({ pillar: t.pillar, content: t.content, notes: t.notes, title: '' });
+  };
+
+  const openEditTemplate = (t: PostTemplate) => {
+    setTemplateForm({ name: t.name, pillar: t.pillar, content: t.content, notes: t.notes });
+    setEditingTemplateId(t.id);
+    setTemplateModalOpen(true);
+  };
+
+  const openNewTemplate = () => {
+    setTemplateForm({ name: '', pillar: '', content: '', notes: '' });
+    setEditingTemplateId(null);
+    setTemplateModalOpen(true);
+  };
+
+  const saveTemplate = () => {
+    if (!templateForm.name.trim()) return;
+    if (editingTemplateId) {
+      setTemplates((prev) => prev.map((t) => t.id === editingTemplateId ? { ...t, ...templateForm } : t));
+      toast('Template updated');
+    } else {
+      const t: PostTemplate = { id: genId(), ...templateForm, createdAt: now() };
+      setTemplates((prev) => [...prev, t]);
+      toast('Template created');
+    }
+    setTemplateModalOpen(false);
+  };
+
+  const deleteTemplate = (id: string) => {
+    setTemplates((prev) => prev.filter((t) => t.id !== id));
+    toast('Template deleted');
+  };
+
   /* ── Pillar list from selected client ── */
 
   const currentPillars = useMemo(() => {
@@ -281,6 +332,7 @@ export const ContentCalendar: React.FC = () => {
             tabs={[
               { key: 'kanban', label: 'Kanban' },
               { key: 'calendar', label: 'Calendar' },
+              { key: 'templates', label: `Templates (${templates.length})` },
             ]}
             active={activeTab}
             onChange={setActiveTab}
@@ -303,6 +355,44 @@ export const ContentCalendar: React.FC = () => {
         </Select>
         <SearchBar value={search} onChange={setSearch} placeholder="Search posts..." />
       </div>
+
+      {/* Pillar Balance */}
+      {(() => {
+        const allPillars: Record<string, number> = {};
+        filtered.forEach((p) => {
+          if (p.pillar) allPillars[p.pillar] = (allPillars[p.pillar] || 0) + 1;
+        });
+        const entries = Object.entries(allPillars).sort((a, b) => b[1] - a[1]);
+        if (entries.length === 0) return null;
+        const max = entries[0][1];
+        const PILLAR_COLORS = ['#FF6B2B', '#3B82F6', '#A855F7', '#22C55E', '#EC4899', '#F59E0B', '#06B6D4', '#EF4444'];
+        return (
+          <div style={{ marginBottom: 20, padding: '14px 16px', background: colors.surface, borderRadius: radius.lg, border: `1px solid ${colors.border}` }}>
+            <div style={{ fontSize: 11, fontWeight: 700, color: colors.textMuted, textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 12 }}>
+              Pillar Distribution ({filtered.length} posts{clientFilter !== 'all' ? '' : ''})
+            </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              {entries.map(([pillar, count], i) => (
+                <div key={pillar} style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                  <div style={{ width: 100, fontSize: 12, color: colors.textSecondary, textAlign: 'right', flexShrink: 0 }}>
+                    {pillar}
+                  </div>
+                  <div style={{ flex: 1, height: 8, background: colors.bg, borderRadius: radius.full, overflow: 'hidden' }}>
+                    <div style={{
+                      height: '100%', borderRadius: radius.full, transition: 'width 0.5s',
+                      background: PILLAR_COLORS[i % PILLAR_COLORS.length],
+                      width: `${(count / max) * 100}%`,
+                    }} />
+                  </div>
+                  <div style={{ width: 28, fontSize: 12, fontWeight: 700, color: colors.textPrimary, textAlign: 'right', flexShrink: 0 }}>
+                    {count}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ═══════════════════════════ KANBAN VIEW ═══════════════════════════ */}
       {activeTab === 'kanban' && (
@@ -641,6 +731,88 @@ export const ContentCalendar: React.FC = () => {
         </div>
       )}
 
+      {/* ═══════════════════════════ TEMPLATES VIEW ═══════════════════════════ */}
+      {activeTab === 'templates' && (
+        <div>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+            <div style={{ fontSize: 13, color: colors.textSecondary }}>
+              {templates.length === 0 ? 'No templates yet. Save a post as a template to reuse it.' : `${templates.length} template${templates.length === 1 ? '' : 's'}`}
+            </div>
+            <Btn onClick={openNewTemplate}><PlusIcon size={13} /> New Template</Btn>
+          </div>
+          {templates.length === 0 ? (
+            <EmptyState
+              message="No templates yet."
+              action="Create Template"
+              onAction={openNewTemplate}
+            />
+          ) : (
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
+              {templates.map((t) => (
+                <div key={t.id} style={{ background: colors.surface, border: `1px solid ${colors.border}`, borderRadius: radius.lg, overflow: 'hidden' }}>
+                  <div style={{ padding: '12px 14px', borderBottom: `1px solid ${colors.border}`, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: colors.textPrimary }}>{t.name}</div>
+                      {t.pillar && <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>{t.pillar}</div>}
+                    </div>
+                    <div style={{ display: 'flex', gap: 4 }}>
+                      <Btn variant="ghost" size="sm" onClick={() => openEditTemplate(t)}><EditIcon size={12} /></Btn>
+                      <Btn variant="ghost" size="sm" onClick={() => deleteTemplate(t.id)}><TrashIcon size={12} /></Btn>
+                    </div>
+                  </div>
+                  <div style={{ padding: '10px 14px' }}>
+                    <div style={{ fontSize: 12, color: colors.textSecondary, lineHeight: 1.5, minHeight: 48, maxHeight: 72, overflow: 'hidden' }}>
+                      {t.content || <span style={{ fontStyle: 'italic', color: colors.textMuted }}>No content</span>}
+                    </div>
+                    <div style={{ marginTop: 10 }}>
+                      <Btn size="sm" onClick={() => useTemplate(t)} style={{ width: '100%', justifyContent: 'center' }}>
+                        <FileTextIcon size={12} /> Use Template
+                      </Btn>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════ TEMPLATE MODAL ═══════════════════════════ */}
+      <Modal open={templateModalOpen} onClose={() => setTemplateModalOpen(false)} title={editingTemplateId ? 'Edit Template' : 'New Template'} width={560}>
+        <div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+            <Field label="Template Name" required>
+              <Input value={templateForm.name} onChange={(e) => setTemplateForm((f) => ({ ...f, name: e.target.value }))} placeholder="e.g. Thought Leadership Hook" />
+            </Field>
+            <Field label="Default Pillar">
+              <Input value={templateForm.pillar} onChange={(e) => setTemplateForm((f) => ({ ...f, pillar: e.target.value }))} placeholder="e.g. Authority Building" />
+            </Field>
+          </div>
+          <Field label="Content Template">
+            <TextArea
+              value={templateForm.content}
+              onChange={(e) => setTemplateForm((f) => ({ ...f, content: e.target.value }))}
+              placeholder="Write template content... (you can edit it when using the template)"
+              style={{ minHeight: 140 }}
+            />
+          </Field>
+          <Field label="Notes">
+            <TextArea
+              value={templateForm.notes}
+              onChange={(e) => setTemplateForm((f) => ({ ...f, notes: e.target.value }))}
+              placeholder="Usage tips or context..."
+              style={{ minHeight: 60 }}
+            />
+          </Field>
+          <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, marginTop: 16 }}>
+            <Btn variant="secondary" onClick={() => setTemplateModalOpen(false)}>Cancel</Btn>
+            <Btn onClick={saveTemplate} disabled={!templateForm.name.trim()}>
+              {editingTemplateId ? 'Update' : 'Create'} Template
+            </Btn>
+          </div>
+        </div>
+      </Modal>
+
       {/* ═══════════════════════════ POST MODAL ═══════════════════════════ */}
       <Modal
         open={modalOpen}
@@ -737,12 +909,15 @@ export const ContentCalendar: React.FC = () => {
 
           {/* Actions */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 20 }}>
-            <div>
+            <div style={{ display: 'flex', gap: 8 }}>
               {editingPost && (
                 <Btn variant="danger" onClick={handleDelete}>
                   <TrashIcon size={14} /> Delete
                 </Btn>
               )}
+              <Btn variant="secondary" onClick={saveAsTemplate} title="Save content as a reusable template">
+                <FileTextIcon size={13} /> Save as Template
+              </Btn>
             </div>
             <div style={{ display: 'flex', gap: 8 }}>
               <Btn variant="secondary" onClick={closeModal}>Cancel</Btn>

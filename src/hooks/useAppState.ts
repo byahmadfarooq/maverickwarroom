@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import type { Prospect, InboundLead, Client, Post, Task, Settings, Section } from '../types';
+import type { Prospect, InboundLead, Client, Post, Task, Settings, Section, Invoice, PostTemplate } from '../types';
 import { loadFromStorage, saveToStorage, clearAllStorage } from '../utils/storage';
 import { sampleSettings, sampleProspects, sampleInbound, sampleClients, samplePosts, sampleTasks } from '../utils/sampleData';
 
@@ -8,6 +8,20 @@ const emptyKG = {
   techStack: [], keyContacts: [], industryNotes: '', contentGoals: '',
   idealCustomerProfile: '', tonePreferences: '', painPoints: '', uniqueSellingPoints: '',
 };
+
+// Ensure prospects loaded from old localStorage have all required fields
+function sanitizeProspects(raw: unknown[]): Prospect[] {
+  return raw.map((p: any) => ({
+    proposals: [], followerCount: 0, lastPostDate: '', connectionAccepted: false, ...p,
+  }));
+}
+
+// Ensure inbound leads loaded from old localStorage have all required fields
+function sanitizeInbound(raw: unknown[]): InboundLead[] {
+  return raw.map((l: any) => ({
+    dealValue: 0, nextFollowUp: '', ...l,
+  }));
+}
 
 // Ensure clients loaded from old localStorage have all required fields
 function sanitizeClients(raw: unknown[]): import('../types').Client[] {
@@ -32,11 +46,13 @@ const defaultSettings: Settings = {
 };
 
 export function useAppState() {
-  const [prospects, setProspects] = useState<Prospect[]>(() => loadFromStorage('prospects', []));
-  const [inbound, setInbound] = useState<InboundLead[]>(() => loadFromStorage('inbound', []));
+  const [prospects, setProspects] = useState<Prospect[]>(() => sanitizeProspects(loadFromStorage<unknown[]>('prospects', [])));
+  const [inbound, setInbound] = useState<InboundLead[]>(() => sanitizeInbound(loadFromStorage<unknown[]>('inbound', [])));
+  const [invoices, setInvoices] = useState<Invoice[]>(() => loadFromStorage('invoices', []));
   const [clients, setClients] = useState<Client[]>(() => sanitizeClients(loadFromStorage<unknown[]>('clients', [])));
   const [posts, setPosts] = useState<Post[]>(() => loadFromStorage('posts', []));
   const [tasks, setTasks] = useState<Task[]>(() => loadFromStorage('tasks', []));
+  const [templates, setTemplates] = useState<PostTemplate[]>(() => loadFromStorage('templates', []));
   const [settings, setSettings] = useState<Settings>(() => {
     // Deep-merge so that new keys (e.g. finance) always exist even if old data lacks them
     const raw = loadFromStorage<Partial<Settings>>('settings', defaultSettings);
@@ -52,9 +68,11 @@ export function useAppState() {
 
   useEffect(() => { saveToStorage('prospects', prospects); }, [prospects]);
   useEffect(() => { saveToStorage('inbound', inbound); }, [inbound]);
+  useEffect(() => { saveToStorage('invoices', invoices); }, [invoices]);
   useEffect(() => { saveToStorage('clients', clients); }, [clients]);
   useEffect(() => { saveToStorage('posts', posts); }, [posts]);
   useEffect(() => { saveToStorage('tasks', tasks); }, [tasks]);
+  useEffect(() => { saveToStorage('templates', templates); }, [templates]);
   useEffect(() => { saveToStorage('settings', settings); }, [settings]);
 
   const toast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'success') => {
@@ -119,12 +137,21 @@ export function useAppState() {
     setTasks((t) => t.filter((x) => x.id !== id));
   }, []);
 
+  const updateInvoice = useCallback((id: string, updates: Partial<Invoice>) => {
+    setInvoices((inv) => inv.map((x) => (x.id === id ? { ...x, ...updates } : x)));
+  }, []);
+  const deleteInvoice = useCallback((id: string) => {
+    setInvoices((inv) => inv.filter((x) => x.id !== id));
+  }, []);
+
   return {
     prospects, setProspects, updateProspect, deleteProspect,
     inbound, setInbound, updateInbound, deleteInbound,
     clients, setClients, updateClient, deleteClient,
     posts, setPosts, updatePost, deletePost,
     tasks, setTasks, updateTask, deleteTask,
+    invoices, setInvoices, updateInvoice, deleteInvoice,
+    templates, setTemplates,
     settings, setSettings,
     activeSection, setActiveSection,
     toasts, toast,

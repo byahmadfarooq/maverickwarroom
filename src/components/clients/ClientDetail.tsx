@@ -5,7 +5,7 @@ import { XIcon, EditIcon, TrashIcon, PlusIcon } from '../shared/Icons';
 import { useApp } from '../../hooks/AppContext';
 import {
   formatCurrency, formatDate, formatNumber, formatPercent, formatDualCurrency,
-  genId, today, statusLabel,
+  genId, today, statusLabel, calcClientHealth,
 } from '../../utils/helpers';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts';
 import type { Client, Post, Activity } from '../../types';
@@ -61,6 +61,7 @@ export const ClientDetail: React.FC<Props> = ({ client, posts, onClose, onUpdate
   const avgImpressions = publishedPosts.length ? Math.round(totalImpressions / publishedPosts.length) : 0;
   const avgEngRate = totalImpressions > 0 ? totalEngagement / totalImpressions : 0;
   const monthlyValue = client.billingType === 'retainer' ? (client.retainer ?? 0) : (client.projectValue ?? 0);
+  const health = calcClientHealth(client, posts);
   const clientActivities = client.activities ?? [];
   const clientPillars = client.pillars ?? [];
 
@@ -154,15 +155,39 @@ export const ClientDetail: React.FC<Props> = ({ client, posts, onClose, onUpdate
             </div>
           </div>
 
-          {/* Status + Value */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12 }}>
+          {/* Status + Value + Health */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 12, flexWrap: 'wrap' }}>
             <StatusBadge status={client.status} />
             <StatusBadge status={client.billingType} />
-            <span style={{
-              fontSize: 18, fontWeight: 700, color: colors.success, letterSpacing: -0.3,
-            }}>
+            <span style={{ fontSize: 18, fontWeight: 700, color: colors.success, letterSpacing: -0.3 }}>
               {formatCurrency(monthlyValue)}
             </span>
+            {client.status === 'active' && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 6,
+                background: health.color + '15', border: `1px solid ${health.color}40`,
+                borderRadius: radius.full, padding: '4px 12px', marginLeft: 'auto',
+              }}>
+                <div style={{ width: 28, height: 28, position: 'relative', flexShrink: 0 }}>
+                  <svg width="28" height="28" viewBox="0 0 28 28">
+                    <circle cx="14" cy="14" r="11" fill="none" stroke={colors.border} strokeWidth="3" />
+                    <circle cx="14" cy="14" r="11" fill="none" stroke={health.color} strokeWidth="3"
+                      strokeDasharray={`${(health.score / 100) * 69.1} 69.1`}
+                      strokeLinecap="round" transform="rotate(-90 14 14)" />
+                  </svg>
+                  <span style={{
+                    position: 'absolute', inset: 0, display: 'flex', alignItems: 'center',
+                    justifyContent: 'center', fontSize: 9, fontWeight: 700, color: health.color,
+                  }}>{health.grade}</span>
+                </div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 700, color: health.color, lineHeight: 1 }}>
+                    {health.score}<span style={{ fontSize: 10, fontWeight: 400, color: colors.textMuted }}>/100</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: colors.textMuted, marginTop: 1 }}>Health Score</div>
+                </div>
+              </div>
+            )}
           </div>
           <div style={{ fontSize: 11, color: colors.textMuted, marginBottom: 12 }}>
             {formatDualCurrency(monthlyValue, rate)}
@@ -204,6 +229,33 @@ export const ClientDetail: React.FC<Props> = ({ client, posts, onClose, onUpdate
                   </div>
                 ))}
               </div>
+
+              {/* Health Score Breakdown */}
+              {client.status === 'active' && (
+                <div style={{ marginBottom: 20, padding: 14, background: colors.bg, borderRadius: radius.md, border: `1px solid ${health.color}30` }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 }}>
+                    <div style={{ fontSize: 11, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                      Health Score Breakdown
+                    </div>
+                    <span style={{ fontSize: 18, fontWeight: 700, color: health.color }}>{health.score}/100</span>
+                  </div>
+                  {[
+                    { label: 'Posts This Month', score: health.postsScore, max: 40 },
+                    { label: 'Activity Recency', score: health.activityScore, max: 30 },
+                    { label: 'Engagement Rate', score: health.engagementScore, max: 30 },
+                  ].map((row) => (
+                    <div key={row.label} style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                      <span style={{ width: 130, fontSize: 11, color: colors.textSecondary, flexShrink: 0 }}>{row.label}</span>
+                      <div style={{ flex: 1, height: 6, background: colors.border, borderRadius: radius.full, overflow: 'hidden' }}>
+                        <div style={{ height: '100%', width: `${(row.score / row.max) * 100}%`, background: health.color, borderRadius: radius.full, transition: 'width 0.4s' }} />
+                      </div>
+                      <span style={{ width: 40, fontSize: 11, fontWeight: 600, color: health.color, textAlign: 'right', flexShrink: 0 }}>
+                        {row.score}/{row.max}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {/* Info Fields */}
               <div style={kgSectionStyle}>

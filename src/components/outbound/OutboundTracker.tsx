@@ -245,8 +245,18 @@ export const OutboundTracker: React.FC = () => {
                             <Badge color={colors.success}>{formatCurrency(p.dealValue)}</Badge>
                           )}
                         </div>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 4 }}>
                           <Badge color={colors.textSecondary}>{statusLabel(p.source)}</Badge>
+                          <div style={{ display: 'flex', gap: 4 }}>
+                            {p.connectionAccepted && (
+                              <Badge color={colors.success}>Connected</Badge>
+                            )}
+                            {p.followerCount > 0 && (
+                              <span style={{ fontSize: 10, color: colors.textMuted }}>
+                                {p.followerCount >= 1000 ? `${(p.followerCount / 1000).toFixed(1)}K` : p.followerCount} followers
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     );

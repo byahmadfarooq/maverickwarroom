@@ -8,6 +8,44 @@ import type { Prospect, InboundLead, Client, Post } from '../../types';
 
 const COLORS = [colors.accent, colors.info, colors.success, colors.warning, colors.purple, colors.pink];
 
+const RevenueTrendChart: React.FC<{ data: { label: string; mrr: number }[] }> = ({ data }) => {
+  const W = 500; const H = 130;
+  const pad = { top: 10, right: 16, bottom: 28, left: 68 };
+  const cw = W - pad.left - pad.right;
+  const ch = H - pad.top - pad.bottom;
+  const maxVal = Math.max(...data.map((d) => d.mrr), 1);
+  const pts = data.map((d, i) => ({
+    x: pad.left + (data.length > 1 ? (i / (data.length - 1)) * cw : cw / 2),
+    y: pad.top + ch - (d.mrr / maxVal) * ch,
+    ...d,
+  }));
+  const lineD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x},${p.y}`).join(' ');
+  const areaD = `${lineD} L${pts[pts.length - 1].x},${pad.top + ch} L${pts[0].x},${pad.top + ch} Z`;
+  return (
+    <svg width="100%" viewBox={`0 0 ${W} ${H}`} style={{ overflow: 'visible', display: 'block' }}>
+      {[0, 0.5, 1].map((frac) => {
+        const y = pad.top + ch - frac * ch;
+        return (
+          <g key={frac}>
+            <line x1={pad.left} x2={W - pad.right} y1={y} y2={y} stroke={colors.border} strokeWidth={1} />
+            <text x={pad.left - 6} y={y + 4} textAnchor="end" fontSize={10} fill={colors.textMuted}>
+              {formatCurrency(frac * maxVal)}
+            </text>
+          </g>
+        );
+      })}
+      <path d={areaD} fill={colors.accent} fillOpacity={0.12} />
+      <path d={lineD} fill="none" stroke={colors.accent} strokeWidth={2.5} strokeLinejoin="round" strokeLinecap="round" />
+      {pts.map((p) => (
+        <g key={p.label}>
+          <circle cx={p.x} cy={p.y} r={4} fill={colors.accent} stroke={colors.bg} strokeWidth={2} />
+          <text x={p.x} y={pad.top + ch + 18} textAnchor="middle" fontSize={10} fill={colors.textSecondary}>{p.label}</text>
+        </g>
+      ))}
+    </svg>
+  );
+};
+
 const thStyle: React.CSSProperties = {
   padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600,
   color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8,
@@ -136,13 +174,35 @@ export const Analytics: React.FC = () => {
 
     const churnRate = clients.length > 0 ? churnedClients.length / clients.length : 0;
 
+    // Revenue trend: MRR for each of the last 6 months
+    const mrrTrend = (() => {
+      const result: { label: string; mrr: number }[] = [];
+      const now = new Date();
+      for (let i = 5; i >= 0; i--) {
+        const monthStart = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        const label = monthStart.toLocaleString('default', { month: 'short', year: '2-digit' });
+        let monthMrr = 0;
+        for (const c of clients) {
+          if (c.billingType !== 'retainer') continue;
+          const start = new Date(c.startDate);
+          const churn = c.churnDate ? new Date(c.churnDate) : null;
+          if (start <= monthEnd && (!churn || churn >= monthStart)) {
+            monthMrr += c.retainer;
+          }
+        }
+        result.push({ label, mrr: monthMrr });
+      }
+      return result;
+    })();
+
     return {
       activeClients, churnedClients, mrr, totalRevenue, publishedPosts, totalImpressions,
       outboundByStage, inboundByStage,
       wonProspects, outboundConversion, avgTimeToClose, activePipelineValue,
       wonInbound, inboundConversion, avgTimeToQualify,
       personalPosts, clientPosts, postsByStatus, topPosts, postsPerWeek,
-      mrrByClient, clientTenure, churnRate,
+      mrrByClient, clientTenure, churnRate, mrrTrend,
     };
   }, [prospects, inbound, clients, posts, tasks, settings]);
 
@@ -201,7 +261,20 @@ export const Analytics: React.FC = () => {
         </Card>
       </div>
 
-      {/* Monthly Growth */}
+      {/* Revenue Trend */}
+      <Card style={{ marginBottom: 28 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h4 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            MRR Trend (Last 6 Months)
+          </h4>
+          <span style={{ fontSize: 22, fontWeight: 700, color: colors.success }}>
+            {formatCurrency(computed.mrr)} <span style={{ fontSize: 11, fontWeight: 400, color: colors.textSecondary }}>current MRR</span>
+          </span>
+        </div>
+        <RevenueTrendChart data={computed.mrrTrend} />
+      </Card>
+
+      {/* Key Metrics */}
       <Card>
         <h4 style={{ margin: '0 0 12px', fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
           Key Metrics
@@ -392,6 +465,17 @@ export const Analytics: React.FC = () => {
         <StatCard label="Total Clients" value={clients.length} color={colors.textPrimary} />
         <StatCard label="Churn Rate" value={formatPercent(computed.churnRate)} color={computed.churnRate > 0.2 ? colors.error : colors.success} />
       </div>
+
+      {/* Revenue Trend */}
+      <Card style={{ marginBottom: 24 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+          <h4 style={{ margin: 0, fontSize: 13, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+            MRR Trend (Last 6 Months)
+          </h4>
+          <span style={{ fontSize: 18, fontWeight: 700, color: colors.success }}>{formatCurrency(computed.mrr)}</span>
+        </div>
+        <RevenueTrendChart data={computed.mrrTrend} />
+      </Card>
 
       {/* MRR Breakdown */}
       <Card style={{ marginBottom: 24 }}>

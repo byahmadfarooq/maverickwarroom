@@ -116,6 +116,57 @@ export function statusLabel(s: string): string {
   return s.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
 }
 
+export interface ClientHealthResult {
+  score: number; // 0-100
+  grade: 'A' | 'B' | 'C' | 'D' | 'F';
+  color: string;
+  postsScore: number;   // 0-40
+  activityScore: number; // 0-30
+  engagementScore: number; // 0-30
+}
+
+export function calcClientHealth(
+  client: { activities: { date: string }[]; postingSchedule: string; status: string },
+  posts: { status: string; publishedDate: string | null; impressions: number; reactions: number; comments: number }[]
+): ClientHealthResult {
+  if (client.status !== 'active') {
+    return { score: 0, grade: 'F', color: '#6B7280', postsScore: 0, activityScore: 0, engagementScore: 0 };
+  }
+
+  // ── Posts score (0–40): posts this month vs expected ──
+  const publishedThisMonth = posts.filter(
+    (p) => p.status === 'published' && p.publishedDate && isThisMonth(p.publishedDate)
+  ).length;
+  const schedStr = (client.postingSchedule || '').toLowerCase();
+  let expected = 4; // default: ~1/week
+  const xMatch = schedStr.match(/(\d+)\s*x?\s*\/?\s*week/);
+  const dMatch = schedStr.match(/(\d+)\s*x?\s*\/?\s*day/);
+  if (dMatch) expected = parseInt(dMatch[1]) * 30;
+  else if (xMatch) expected = parseInt(xMatch[1]) * 4;
+  else if (schedStr.includes('daily')) expected = 30;
+  const postsScore = Math.min(Math.round((publishedThisMonth / Math.max(expected, 1)) * 40), 40);
+
+  // ── Activity score (0–30): days since last activity ──
+  const lastAct = client.activities.length > 0
+    ? [...client.activities].sort((a, b) => b.date.localeCompare(a.date))[0]
+    : null;
+  const daysSince = lastAct ? daysAgo(lastAct.date) : 999;
+  const activityScore = daysSince <= 0 ? 30 : daysSince <= 7 ? 25 : daysSince <= 14 ? 15 : daysSince <= 30 ? 5 : 0;
+
+  // ── Engagement score (0–30): avg engagement rate of published posts ──
+  const pubPosts = posts.filter((p) => p.status === 'published' && p.impressions > 0);
+  const avgEngRate = pubPosts.length > 0
+    ? pubPosts.reduce((s, p) => s + (p.reactions + p.comments) / p.impressions, 0) / pubPosts.length
+    : 0;
+  const engagementScore = avgEngRate >= 0.05 ? 30 : avgEngRate >= 0.03 ? 22 : avgEngRate >= 0.01 ? 15 : avgEngRate > 0 ? 5 : 0;
+
+  const score = postsScore + activityScore + engagementScore;
+  const grade: ClientHealthResult['grade'] = score >= 80 ? 'A' : score >= 65 ? 'B' : score >= 50 ? 'C' : score >= 35 ? 'D' : 'F';
+  const color = score >= 80 ? '#22C55E' : score >= 65 ? '#84CC16' : score >= 50 ? '#F59E0B' : score >= 35 ? '#F97316' : '#EF4444';
+
+  return { score, grade, color, postsScore, activityScore, engagementScore };
+}
+
 // Unicode text conversion for LinkedIn
 const BOLD_MAP: Record<string, string> = {};
 const ITALIC_MAP: Record<string, string> = {};

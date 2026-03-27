@@ -3,8 +3,8 @@ import { useApp } from '../../hooks/AppContext';
 import { colors, radius } from '../../utils/theme';
 import { Btn, Badge, Field, Select, Input, TextArea, StatusBadge } from '../shared/FormElements';
 import { XIcon, EditIcon, TrashIcon, PlusIcon } from '../shared/Icons';
-import { genId, today, formatDate, formatCurrency, formatDualCurrency, isOverdue, statusLabel } from '../../utils/helpers';
-import type { Prospect, Activity } from '../../types';
+import { genId, today, now, formatDate, formatCurrency, formatDualCurrency, isOverdue, statusLabel } from '../../utils/helpers';
+import type { Prospect, Activity, Proposal } from '../../types';
 
 interface Props {
   prospect: Prospect;
@@ -26,6 +26,11 @@ export const ProspectDetail: React.FC<Props> = ({ prospect, onClose, onUpdate, o
   const [actDate, setActDate] = useState(today());
   const [actNotes, setActNotes] = useState('');
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [showProposalForm, setShowProposalForm] = useState(false);
+  const [proposalTitle, setProposalTitle] = useState('');
+  const [proposalBody, setProposalBody] = useState('');
+  const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const rate = settings?.finance?.exchangeRate ?? 278;
 
@@ -38,6 +43,50 @@ export const ProspectDetail: React.FC<Props> = ({ prospect, onClose, onUpdate, o
     setShowAddActivity(false);
     setActNotes('');
     setActDate(today());
+  };
+
+  const proposals = prospect.proposals ?? [];
+
+  const openNewProposal = () => {
+    const defaultBody = `Hi ${prospect.name},\n\nFollowing our conversation, I'm excited to present this proposal for ${prospect.company}.\n\n— SCOPE OF WORK —\n\n[Describe deliverables here]\n\n— INVESTMENT —\n\n$${prospect.dealValue > 0 ? prospect.dealValue.toLocaleString() : 'TBD'}/month\n\n— NEXT STEPS —\n\n1. Review this proposal\n2. Schedule a follow-up call\n3. Sign the agreement\n\nLooking forward to working together!\n\nAhmad Farooq`;
+    setProposalTitle(`Proposal for ${prospect.company}`);
+    setProposalBody(defaultBody);
+    setEditingProposalId(null);
+    setShowProposalForm(true);
+  };
+
+  const saveProposal = () => {
+    if (!proposalTitle.trim()) return;
+    if (editingProposalId) {
+      const updated = proposals.map((p) =>
+        p.id === editingProposalId ? { ...p, title: proposalTitle, body: proposalBody } : p
+      );
+      onUpdate({ proposals: updated });
+    } else {
+      const newProposal: Proposal = {
+        id: genId(), title: proposalTitle, body: proposalBody,
+        createdAt: now(), sentAt: null,
+      };
+      onUpdate({ proposals: [...proposals, newProposal] });
+    }
+    setShowProposalForm(false);
+    setEditingProposalId(null);
+  };
+
+  const deleteProposal = (id: string) => {
+    onUpdate({ proposals: proposals.filter((p) => p.id !== id) });
+  };
+
+  const copyProposal = (p: Proposal) => {
+    navigator.clipboard.writeText(`${p.title}\n\n${p.body}`).then(() => {
+      setCopiedId(p.id);
+      setTimeout(() => setCopiedId(null), 2000);
+    });
+  };
+
+  const markProposalSent = (id: string) => {
+    const updated = proposals.map((p) => p.id === id ? { ...p, sentAt: now() } : p);
+    onUpdate({ proposals: updated });
   };
 
   const overdueFollowUp = isOverdue(prospect.nextFollowUp);
@@ -112,6 +161,26 @@ export const ProspectDetail: React.FC<Props> = ({ prospect, onClose, onUpdate, o
               <Badge>{statusLabel(prospect.source)}</Badge>
             </div>
             <div>
+              <div style={infoLabelStyle}>Connection</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: prospect.connectionAccepted ? colors.success : colors.textMuted }}>
+                {prospect.connectionAccepted ? '✓ Accepted' : 'Not Connected'}
+              </div>
+            </div>
+            <div>
+              <div style={infoLabelStyle}>Followers</div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: colors.textPrimary }}>
+                {prospect.followerCount > 0
+                  ? (prospect.followerCount >= 1000 ? `${(prospect.followerCount / 1000).toFixed(1)}K` : prospect.followerCount)
+                  : '—'}
+              </div>
+            </div>
+            <div>
+              <div style={infoLabelStyle}>Last Post</div>
+              <div style={{ fontSize: 13, color: colors.textPrimary }}>
+                {prospect.lastPostDate ? formatDate(prospect.lastPostDate) : '—'}
+              </div>
+            </div>
+            <div>
               <div style={infoLabelStyle}>Next Follow-Up</div>
               <div style={{
                 fontSize: 13, fontWeight: 600,
@@ -182,6 +251,78 @@ export const ProspectDetail: React.FC<Props> = ({ prospect, onClose, onUpdate, o
                 onChange={(e) => onUpdate({ nextFollowUp: e.target.value })}
               />
             </Field>
+          </div>
+
+          {/* Proposals */}
+          <div style={{ marginBottom: 24 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <h4 style={{ margin: 0, fontSize: 13, color: colors.textSecondary, fontWeight: 600, textTransform: 'uppercase', letterSpacing: 0.8 }}>
+                Proposals ({proposals.length})
+              </h4>
+              <Btn variant="secondary" size="sm" onClick={openNewProposal}>
+                <PlusIcon size={12} /> New Proposal
+              </Btn>
+            </div>
+
+            {/* New / Edit Proposal Form */}
+            {showProposalForm && (
+              <div style={{ background: colors.bg, padding: 14, borderRadius: radius.md, marginBottom: 12, border: `1px solid ${colors.border}` }}>
+                <Field label="Title" style={{ marginBottom: 10 }}>
+                  <Input value={proposalTitle} onChange={(e) => setProposalTitle(e.target.value)} placeholder="Proposal title..." />
+                </Field>
+                <Field label="Body" style={{ marginBottom: 10 }}>
+                  <TextArea
+                    value={proposalBody}
+                    onChange={(e) => setProposalBody(e.target.value)}
+                    style={{ minHeight: 180, fontFamily: 'monospace', fontSize: 12 }}
+                  />
+                </Field>
+                <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                  <Btn variant="secondary" size="sm" onClick={() => setShowProposalForm(false)}>Cancel</Btn>
+                  <Btn size="sm" onClick={saveProposal}>Save Proposal</Btn>
+                </div>
+              </div>
+            )}
+
+            {/* Proposals List */}
+            {proposals.length === 0 && !showProposalForm && (
+              <div style={{ textAlign: 'center', color: colors.textMuted, fontSize: 13, padding: '16px 20px', fontStyle: 'italic', background: colors.bg, borderRadius: radius.md, border: `1px solid ${colors.border}` }}>
+                No proposals yet. Create one to get started.
+              </div>
+            )}
+            {[...proposals].reverse().map((p) => (
+              <div key={p.id} style={{ marginBottom: 8, background: colors.bg, borderRadius: radius.md, border: `1px solid ${colors.border}`, overflow: 'hidden' }}>
+                <div style={{ padding: '10px 14px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: `1px solid ${colors.border}` }}>
+                  <div>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: colors.textPrimary }}>{p.title}</div>
+                    <div style={{ fontSize: 11, color: colors.textMuted, marginTop: 2 }}>
+                      Created {formatDate(p.createdAt.split('T')[0])}
+                      {p.sentAt && <span style={{ marginLeft: 8, color: colors.success }}>• Sent {formatDate(p.sentAt.split('T')[0])}</span>}
+                    </div>
+                  </div>
+                  <div style={{ display: 'flex', gap: 4 }}>
+                    <Btn variant="ghost" size="sm" onClick={() => copyProposal(p)}
+                      style={{ color: copiedId === p.id ? colors.success : colors.textSecondary, fontSize: 11 }}>
+                      {copiedId === p.id ? 'Copied!' : 'Copy'}
+                    </Btn>
+                    {!p.sentAt && (
+                      <Btn variant="ghost" size="sm" onClick={() => markProposalSent(p.id)}
+                        style={{ color: colors.info, fontSize: 11 }}>Mark Sent</Btn>
+                    )}
+                    <Btn variant="ghost" size="sm" onClick={() => {
+                      setProposalTitle(p.title); setProposalBody(p.body);
+                      setEditingProposalId(p.id); setShowProposalForm(true);
+                    }}><EditIcon size={12} /></Btn>
+                    <Btn variant="ghost" size="sm" onClick={() => deleteProposal(p.id)}><TrashIcon size={12} /></Btn>
+                  </div>
+                </div>
+                <div style={{ padding: '8px 14px', maxHeight: 80, overflow: 'hidden', position: 'relative' }}>
+                  <div style={{ fontSize: 12, color: colors.textSecondary, whiteSpace: 'pre-wrap', lineHeight: 1.5 }}>
+                    {p.body.slice(0, 200)}{p.body.length > 200 ? '…' : ''}
+                  </div>
+                </div>
+              </div>
+            ))}
           </div>
 
           {/* Activity Log Header */}

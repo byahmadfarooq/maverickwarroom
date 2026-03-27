@@ -18,12 +18,15 @@ export const ProspectForm: React.FC<Props> = ({ prospect, onSave, onCancel }) =>
     email: prospect?.email || '',
     source: prospect?.source || ('cold_outreach' as ProspectSource),
     dealValue: prospect?.dealValue?.toString() || '',
+    followerCount: prospect?.followerCount?.toString() || '',
+    lastPostDate: prospect?.lastPostDate || '',
+    connectionAccepted: prospect?.connectionAccepted ?? false,
     status: prospect?.status || ('research' as ProspectStatus),
     nextFollowUp: prospect?.nextFollowUp || '',
     notes: prospect?.notes || '',
   });
 
-  const set = (key: string, val: string) => setForm((f) => ({ ...f, [key]: val }));
+  const set = (key: string, val: string | boolean) => setForm((f) => ({ ...f, [key]: val }));
   const valid = form.name.trim() && form.company.trim();
 
   const handleSubmit = () => {
@@ -37,11 +40,15 @@ export const ProspectForm: React.FC<Props> = ({ prospect, onSave, onCancel }) =>
       status: form.status,
       source: form.source,
       dealValue: parseFloat(form.dealValue) || 0,
+      followerCount: parseInt(form.followerCount) || 0,
+      lastPostDate: form.lastPostDate,
+      connectionAccepted: form.connectionAccepted,
       firstContactDate: prospect?.firstContactDate || today(),
       lastContactDate: prospect?.lastContactDate || today(),
       nextFollowUp: form.nextFollowUp,
       notes: form.notes,
       activities: prospect?.activities || [],
+      proposals: prospect?.proposals || [],
       createdAt: prospect?.createdAt || now(),
       updatedAt: now(),
     };
@@ -123,7 +130,41 @@ export const ProspectForm: React.FC<Props> = ({ prospect, onSave, onCancel }) =>
         </Field>
       </div>
 
-      {/* Row 4: Next Follow-up */}
+      {/* Row 4: LinkedIn Intelligence */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
+        <Field label="Followers">
+          <Input
+            value={form.followerCount}
+            onChange={(e) => set('followerCount', e.target.value)}
+            type="number"
+            placeholder="5000"
+            min="0"
+          />
+        </Field>
+        <Field label="Last Post Date">
+          <Input
+            value={form.lastPostDate}
+            onChange={(e) => set('lastPostDate', e.target.value)}
+            type="date"
+          />
+        </Field>
+        <Field label="Connection Accepted">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, height: 38 }}>
+            <input
+              type="checkbox"
+              id="connAccepted"
+              checked={form.connectionAccepted}
+              onChange={(e) => set('connectionAccepted', e.target.checked)}
+              style={{ width: 16, height: 16, cursor: 'pointer' }}
+            />
+            <label htmlFor="connAccepted" style={{ fontSize: 13, color: form.connectionAccepted ? colors.success : colors.textSecondary, cursor: 'pointer', fontWeight: 500 }}>
+              {form.connectionAccepted ? 'Yes' : 'No'}
+            </label>
+          </div>
+        </Field>
+      </div>
+
+      {/* Row 5: Next Follow-up */}
       <Field label="Next Follow-Up">
         <Input
           value={form.nextFollowUp}

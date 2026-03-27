@@ -5,10 +5,10 @@ import { Card, Btn, Badge, StatusBadge, StatCard, EmptyState, SearchBar } from '
 import { Modal } from '../shared/Modal';
 import { InboundForm } from './InboundForm';
 import { InboundDetail } from './InboundDetail';
-import { PlusIcon, InboxIcon, TrendingUpIcon, TargetIcon } from '../shared/Icons';
+import { PlusIcon, InboxIcon, TrendingUpIcon, TargetIcon, DollarIcon } from '../shared/Icons';
 import {
-  formatPercent, formatCurrency, formatDualCurrency, isThisWeek, isLastNDays,
-  statusLabel, daysBetween,
+  formatPercent, formatCurrency, formatDualCurrency, isThisWeek,
+  statusLabel, daysBetween, isOverdue, daysAgo,
 } from '../../utils/helpers';
 import type { InboundLead, InboundStatus } from '../../types';
 
@@ -79,13 +79,13 @@ export const InboundTracker: React.FC = () => {
       !['won', 'lost', 'not_qualified'].includes(l.status)
     ).length;
 
-    // Total Inbound Value (estimate from avg won deal)
-    // Since InboundLead doesn't have dealValue, estimate from prospects that converted
-    const totalInboundValue = 0; // No dealValue on InboundLead type
+    const activePipeline = inbound
+      .filter((l) => !['won', 'lost', 'not_qualified'].includes(l.status))
+      .reduce((s, l) => s + (l.dealValue || 0), 0);
 
     return {
       newThisWeek, responseRate, qualifiedRate, callsFromInbound,
-      winRate, topSourceLabel, avgTimeToQualify, activeLeads, totalInboundValue,
+      winRate, topSourceLabel, avgTimeToQualify, activeLeads, activePipeline,
     };
   }, [inbound]);
 
@@ -125,6 +125,7 @@ export const InboundTracker: React.FC = () => {
           { label: 'Top Source', value: metrics.topSourceLabel, color: colors.textPrimary },
           { label: 'Avg Time To Qualify', value: metrics.avgTimeToQualify > 0 ? `${metrics.avgTimeToQualify}d` : '-', color: colors.info },
           { label: 'Active Leads', value: metrics.activeLeads, color: colors.accent },
+          { label: 'Active Pipeline', value: formatCurrency(metrics.activePipeline), color: colors.success, icon: <DollarIcon size={16} style={{ color: colors.success }} /> },
         ] as { label: string; value: string | number; sub?: string; color: string; icon?: React.ReactNode }[]).map((m) => (
           <StatCard key={m.label} label={m.label} value={m.value} sub={m.sub} color={m.color} icon={m.icon} />
         ))}
@@ -191,52 +192,55 @@ export const InboundTracker: React.FC = () => {
                   flex: 1, overflow: 'auto', padding: 8,
                   display: 'flex', flexDirection: 'column', gap: 8,
                 }}>
-                  {colLeads.map((l) => (
-                    <div
-                      key={l.id}
-                      draggable
-                      onDragStart={() => setDragId(l.id)}
-                      onDragEnd={() => setDragId(null)}
-                      onClick={() => setDetailLead(l)}
-                      style={{
-                        background: colors.bg, border: `1px solid ${colors.border}`,
-                        borderRadius: radius.md, padding: 12, cursor: 'grab',
-                        transition: 'border-color 0.15s, box-shadow 0.15s',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.borderColor = col.color;
-                        e.currentTarget.style.boxShadow = `0 0 12px ${col.color}18`;
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.borderColor = colors.border;
-                        e.currentTarget.style.boxShadow = 'none';
-                      }}
-                    >
-                      <div style={{
-                        fontWeight: 600, fontSize: 13, marginBottom: 3,
-                        color: colors.textPrimary, letterSpacing: -0.1,
-                      }}>
-                        {l.name}
-                      </div>
-                      <div style={{
-                        fontSize: 12, color: colors.textSecondary, marginBottom: 8,
-                      }}>
-                        {l.company}
-                      </div>
-                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: l.message ? 6 : 0 }}>
-                        <Badge color={colors.textSecondary}>{statusLabel(l.source)}</Badge>
-                      </div>
-                      {l.message && (
-                        <div style={{
-                          fontSize: 11, color: colors.textMuted, marginTop: 4,
-                          overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          maxWidth: '100%', lineHeight: 1.4,
-                        }}>
-                          {l.message}
+                  {colLeads.map((l) => {
+                    const stale = !['won', 'lost', 'not_qualified'].includes(l.status) &&
+                      l.lastActionDate && daysAgo(l.lastActionDate) > 5;
+                    const overdue = isOverdue(l.nextFollowUp);
+                    return (
+                      <div
+                        key={l.id}
+                        draggable
+                        onDragStart={() => setDragId(l.id)}
+                        onDragEnd={() => setDragId(null)}
+                        onClick={() => setDetailLead(l)}
+                        style={{
+                          background: colors.bg, border: `1px solid ${colors.border}`,
+                          borderRadius: radius.md, padding: 12, cursor: 'grab',
+                          transition: 'border-color 0.15s, box-shadow 0.15s',
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.borderColor = col.color;
+                          e.currentTarget.style.boxShadow = `0 0 12px ${col.color}18`;
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.borderColor = colors.border;
+                          e.currentTarget.style.boxShadow = 'none';
+                        }}
+                      >
+                        <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 3, color: colors.textPrimary, letterSpacing: -0.1 }}>
+                          {l.name}
                         </div>
-                      )}
-                    </div>
-                  ))}
+                        <div style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 8 }}>
+                          {l.company}
+                        </div>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4, marginBottom: 4 }}>
+                          {overdue && <Badge color={colors.error}>Overdue</Badge>}
+                          {!overdue && stale && <Badge color={colors.warning}>Stale {daysAgo(l.lastActionDate)}d</Badge>}
+                          {l.dealValue > 0 && <Badge color={colors.success}>{formatCurrency(l.dealValue)}</Badge>}
+                          <Badge color={colors.textSecondary}>{statusLabel(l.source)}</Badge>
+                        </div>
+                        {l.message && (
+                          <div style={{
+                            fontSize: 11, color: colors.textMuted, marginTop: 4,
+                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                            maxWidth: '100%', lineHeight: 1.4,
+                          }}>
+                            {l.message}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
                   {colLeads.length === 0 && (
                     <div style={{
                       textAlign: 'center', padding: '24px 8px', fontSize: 12,

@@ -5,6 +5,8 @@ const KEYS = {
   posts: 'lbc_posts',
   tasks: 'lbc_tasks',
   settings: 'lbc_settings',
+  invoices: 'lbc_invoices',
+  templates: 'lbc_templates',
 } as const;
 
 export function loadFromStorage<T>(key: keyof typeof KEYS, fallback: T): T {

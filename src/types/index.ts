@@ -38,6 +38,14 @@ export type ProspectSource =
   | 'event'
   | 'other';
 
+export interface Proposal {
+  id: string;
+  title: string;
+  body: string;
+  createdAt: string;
+  sentAt: string | null;
+}
+
 export interface Prospect {
   id: string;
   name: string;
@@ -47,11 +55,15 @@ export interface Prospect {
   status: ProspectStatus;
   source: ProspectSource;
   dealValue: number;
+  followerCount: number;
+  lastPostDate: string; // YYYY-MM-DD or ''
+  connectionAccepted: boolean;
   firstContactDate: string;
   lastContactDate: string;
   nextFollowUp: string;
   notes: string;
   activities: Activity[];
+  proposals: Proposal[];
   createdAt: string;
   updatedAt: string;
 }
@@ -85,8 +97,10 @@ export interface InboundLead {
   status: InboundStatus;
   response: string;
   activities: Activity[];
+  dealValue: number;
   dateReceived: string;
   lastActionDate: string;
+  nextFollowUp: string; // YYYY-MM-DD
   nextStep: string;
   notes: string;
   createdAt: string;
@@ -208,6 +222,16 @@ export interface Post {
   updatedAt: string;
 }
 
+// ── Post Templates ──
+export interface PostTemplate {
+  id: string;
+  name: string;
+  pillar: string;
+  content: string;
+  notes: string;
+  createdAt: string;
+}
+
 // ── Tasks ──
 export type TaskStatus = 'todo' | 'in_progress' | 'done';
 export type TaskCategory = 'personal' | 'client';
@@ -237,6 +261,19 @@ export interface Task {
 }
 
 // ── Finance ──
+export type InvoiceStatus = 'unpaid' | 'paid' | 'overdue';
+
+export interface Invoice {
+  id: string;
+  clientId: string;
+  description: string;
+  amount: number; // USD
+  dueDate: string; // YYYY-MM-DD
+  status: InvoiceStatus;
+  paidDate: string | null;
+  createdAt: string;
+}
+
 export interface FinanceSettings {
   hourlyRate: number;
   exchangeRate: number; // 1 USD = X PKR

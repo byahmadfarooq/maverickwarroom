@@ -20,6 +20,8 @@ export const InboundForm: React.FC<Props> = ({ lead, posts, onSave, onCancel }) 
     sourcePostId: lead?.sourcePostId || '',
     message: lead?.message || '',
     status: lead?.status || ('new' as InboundStatus),
+    dealValue: String(lead?.dealValue ?? 0),
+    nextFollowUp: lead?.nextFollowUp || '',
     nextStep: lead?.nextStep || '',
     notes: lead?.notes || '',
   });
@@ -40,8 +42,10 @@ export const InboundForm: React.FC<Props> = ({ lead, posts, onSave, onCancel }) 
       status: form.status,
       response: lead?.response || '',
       activities: lead?.activities || [],
+      dealValue: parseInt(form.dealValue) || 0,
       dateReceived: lead?.dateReceived || today(),
       lastActionDate: lead?.lastActionDate || today(),
+      nextFollowUp: form.nextFollowUp,
       nextStep: form.nextStep,
       notes: form.notes,
       createdAt: lead?.createdAt || now(),
@@ -113,7 +117,7 @@ export const InboundForm: React.FC<Props> = ({ lead, posts, onSave, onCancel }) 
         />
       </Field>
 
-      {/* Row 5: Status + Next Step */}
+      {/* Row 5: Status + Deal Value */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
         <Field label="Status">
           <Select value={form.status} onChange={(e) => set('status', e.target.value)}>
@@ -126,6 +130,25 @@ export const InboundForm: React.FC<Props> = ({ lead, posts, onSave, onCancel }) 
             <option value="lost">Lost</option>
             <option value="not_qualified">Not Qualified</option>
           </Select>
+        </Field>
+        <Field label="Deal Value (USD)">
+          <Input
+            type="number" min="0"
+            value={form.dealValue}
+            onChange={(e) => set('dealValue', e.target.value)}
+            placeholder="500"
+          />
+        </Field>
+      </div>
+
+      {/* Row 6: Next Follow-up + Next Step */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+        <Field label="Next Follow-up Date">
+          <Input
+            type="date"
+            value={form.nextFollowUp}
+            onChange={(e) => set('nextFollowUp', e.target.value)}
+          />
         </Field>
         <Field label="Next Step">
           <Input

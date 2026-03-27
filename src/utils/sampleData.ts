@@ -37,63 +37,69 @@ export const sampleProspects: Prospect[] = [
   {
     id: genId(), name: 'Sarah Chen', company: 'TechFlow AI', linkedinUrl: '', email: 'sarah@techflow.ai',
     status: 'call_booked', source: 'cold_outreach', dealValue: 3000,
+    followerCount: 8200, lastPostDate: d(-3), connectionAccepted: true,
     firstContactDate: d(-14), lastContactDate: d(-1), nextFollowUp: d(1),
     notes: 'Interested in thought leadership content', activities: [
       { id: genId(), date: d(-14), type: 'dm_sent', notes: 'Initial outreach about LinkedIn content' },
       { id: genId(), date: d(-10), type: 'they_replied', notes: 'Replied positively, asked for examples' },
       { id: genId(), date: d(-7), type: 'follow_up', notes: 'Sent portfolio link' },
       { id: genId(), date: d(-1), type: 'call_scheduled', notes: 'Discovery call booked for Friday' },
-    ],
+    ], proposals: [],
     createdAt: d(-14), updatedAt: d(-1),
   },
   {
     id: genId(), name: 'James Wilson', company: 'ScaleUp VC', linkedinUrl: '', email: '',
     status: 'dm_sent', source: 'cold_outreach', dealValue: 5000,
+    followerCount: 24500, lastPostDate: d(-7), connectionAccepted: false,
     firstContactDate: d(-3), lastContactDate: d(-3), nextFollowUp: d(2),
     notes: 'VC partner, could be a great case study', activities: [
       { id: genId(), date: d(-3), type: 'dm_sent', notes: 'Personalized DM about VC thought leadership' },
-    ],
+    ], proposals: [],
     createdAt: d(-3), updatedAt: d(-3),
   },
   {
     id: genId(), name: 'Maria Gonzalez', company: 'CloudServe', linkedinUrl: '', email: 'maria@cloudserve.io',
     status: 'proposal_sent', source: 'referral', dealValue: 4000,
+    followerCount: 3100, lastPostDate: d(-14), connectionAccepted: true,
     firstContactDate: d(-21), lastContactDate: d(-2), nextFollowUp: d(-1),
     notes: 'Referred by David Kim', activities: [
       { id: genId(), date: d(-21), type: 'dm_sent', notes: 'Intro via David Kim' },
       { id: genId(), date: d(-18), type: 'they_replied', notes: 'Very interested' },
       { id: genId(), date: d(-14), type: 'call_completed', notes: 'Great call, wants 5 posts/week' },
       { id: genId(), date: d(-2), type: 'proposal_sent', notes: 'Sent $4K/mo proposal' },
-    ],
+    ], proposals: [],
     createdAt: d(-21), updatedAt: d(-2),
   },
   {
     id: genId(), name: 'Alex Turner', company: 'DevOps Pro', linkedinUrl: '', email: '',
     status: 'research', source: 'content_reply', dealValue: 2500,
+    followerCount: 1800, lastPostDate: d(-2), connectionAccepted: false,
     firstContactDate: d(-1), lastContactDate: d(-1), nextFollowUp: d(3),
-    notes: 'Commented on 3 posts, seems very engaged', activities: [],
+    notes: 'Commented on 3 posts, seems very engaged', activities: [], proposals: [],
     createdAt: d(-1), updatedAt: d(-1),
   },
   {
     id: genId(), name: 'Lisa Park', company: 'DataMinds', linkedinUrl: '', email: '',
     status: 'replied', source: 'cold_outreach', dealValue: 3500,
+    followerCount: 5600, lastPostDate: d(-5), connectionAccepted: true,
     firstContactDate: d(-7), lastContactDate: d(-4), nextFollowUp: d(0),
     notes: 'Looking for B2B SaaS content', activities: [
       { id: genId(), date: d(-7), type: 'dm_sent', notes: 'Cold outreach' },
       { id: genId(), date: d(-4), type: 'they_replied', notes: 'Asked about pricing' },
-    ],
+    ], proposals: [],
     createdAt: d(-7), updatedAt: d(-4),
   },
   {
     id: genId(), name: 'Tom Brady', company: 'FinStack', linkedinUrl: '', email: '',
     status: 'won', source: 'inbound', dealValue: 3000,
+    followerCount: 12000, lastPostDate: d(-10), connectionAccepted: true,
     firstContactDate: d(-30), lastContactDate: d(-5), nextFollowUp: '',
     notes: 'Converted from inbound', activities: [
       { id: genId(), date: d(-30), type: 'they_replied', notes: 'Reached out via DM' },
       { id: genId(), date: d(-25), type: 'call_completed', notes: 'Discovery call' },
       { id: genId(), date: d(-20), type: 'proposal_sent', notes: 'Sent proposal' },
       { id: genId(), date: d(-5), type: 'won', notes: 'Signed!' },
-    ],
+    ], proposals: [],
     createdAt: d(-30), updatedAt: d(-5),
   },
 ];
@@ -102,8 +108,8 @@ export const sampleInbound: InboundLead[] = [
   {
     id: genId(), name: 'Rachel Adams', company: 'GrowthLab', linkedinUrl: '',
     source: 'post_comment', sourcePostId: null, message: 'Love your content strategy framework! Do you offer this as a service?',
-    status: 'new', response: '', activities: [],
-    dateReceived: d(-1), lastActionDate: d(-1), nextStep: 'Reply to comment', notes: '',
+    status: 'new', response: '', activities: [], dealValue: 1500,
+    dateReceived: d(-1), lastActionDate: d(-1), nextFollowUp: d(1), nextStep: 'Reply to comment', notes: '',
     createdAt: d(-1), updatedAt: d(-1),
   },
   {
@@ -111,8 +117,8 @@ export const sampleInbound: InboundLead[] = [
     source: 'dm', sourcePostId: null, message: 'Hey, saw your posts about LinkedIn ghostwriting. What are your rates?',
     status: 'contacted', response: 'Thanks Kevin! Sent over my services deck.', activities: [
       { id: genId(), date: d(-2), type: 'they_replied', notes: 'Sent services info' },
-    ],
-    dateReceived: d(-3), lastActionDate: d(-2), nextStep: 'Follow up if no reply', notes: '',
+    ], dealValue: 2000,
+    dateReceived: d(-3), lastActionDate: d(-2), nextFollowUp: d(0), nextStep: 'Follow up if no reply', notes: '',
     createdAt: d(-3), updatedAt: d(-2),
   },
   {
@@ -121,8 +127,8 @@ export const sampleInbound: InboundLead[] = [
     status: 'qualified', response: 'Connected and had initial chat', activities: [
       { id: genId(), date: d(-5), type: 'they_replied', notes: 'Accepted connection' },
       { id: genId(), date: d(-4), type: 'follow_up', notes: 'Qualified - good fit' },
-    ],
-    dateReceived: d(-5), lastActionDate: d(-4), nextStep: 'Book discovery call', notes: 'Has 50K followers, serious buyer',
+    ], dealValue: 3500,
+    dateReceived: d(-5), lastActionDate: d(-4), nextFollowUp: d(2), nextStep: 'Book discovery call', notes: 'Has 50K followers, serious buyer',
     createdAt: d(-5), updatedAt: d(-4),
   },
 ];

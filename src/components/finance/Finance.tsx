@@ -1,10 +1,11 @@
-import React, { useContext, useMemo } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import { AppCtx } from '../../hooks/AppContext';
 import { colors, radius } from '../../utils/theme';
-import { Card, SectionHeader, StatCard } from '../shared/FormElements';
-import { DollarIcon, TrendingUpIcon, UsersIcon, BarChartIcon } from '../shared/Icons';
-import { formatCurrency, formatDualCurrency, formatNumber, formatPercent, formatHours, daysBetween, today } from '../../utils/helpers';
-import type { Client } from '../../types';
+import { Card, SectionHeader, StatCard, Btn, Field, Input, Select } from '../shared/FormElements';
+import { Modal } from '../shared/Modal';
+import { DollarIcon, TrendingUpIcon, UsersIcon, BarChartIcon, PlusIcon, TrashIcon } from '../shared/Icons';
+import { formatCurrency, formatDualCurrency, formatPercent, formatHours, daysBetween, today, genId, now, isOverdue, formatDate } from '../../utils/helpers';
+import type { Client, Invoice, InvoiceStatus } from '../../types';
 
 const thStyle: React.CSSProperties = {
   padding: '10px 12px', textAlign: 'left', fontSize: 11, fontWeight: 600,
@@ -17,8 +18,13 @@ const tdStyle: React.CSSProperties = {
   borderBottom: `1px solid ${colors.border}`,
 };
 
+const emptyInvoiceForm = { clientId: '', description: '', amount: '', dueDate: today() };
+
 export const Finance: React.FC = () => {
-  const { clients, tasks, settings } = useContext(AppCtx);
+  const { clients, tasks, settings, invoices, setInvoices, updateInvoice, deleteInvoice, toast } = useContext(AppCtx);
+  const [showInvoiceModal, setShowInvoiceModal] = useState(false);
+  const [invoiceForm, setInvoiceForm] = useState({ ...emptyInvoiceForm });
+  const setIF = (k: string, v: string) => setInvoiceForm((f) => ({ ...f, [k]: v }));
   const rate = settings?.finance?.exchangeRate ?? 278;
 
   const data = useMemo(() => {
@@ -69,13 +75,18 @@ export const Finance: React.FC = () => {
       return { id: c.id, name: c.name, revenue, hours, revPerHour, status: c.status, billingType: c.billingType };
     }).sort((a, b) => b.revPerHour - a.revPerHour);
 
+    // Invoices
+    const totalReceivables = invoices.filter((i) => i.status !== 'paid').reduce((s, i) => s + i.amount, 0);
+    const overdueInvoices = invoices.filter((i) => i.status !== 'paid' && isOverdue(i.dueDate)).length;
+
     return {
       mrr, oneTimeRevenue, totalRevenue,
       cac, ltv, ltvCacRatio, avgRetainer, avgLifespan, profitMargin,
       totalHours, revenuePerHour, hourlyRate,
       clientProfitability,
+      totalReceivables, overdueInvoices,
     };
-  }, [clients, tasks, settings]);
+  }, [clients, tasks, settings, invoices]);
 
   const ltvColor = data.ltvCacRatio >= 3 ? colors.success
     : data.ltvCacRatio >= 1 ? colors.warning
@@ -176,6 +187,108 @@ export const Finance: React.FC = () => {
         />
       </div>
 
+      {/* Invoices */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, margin: 0 }}>Invoices & Payments</h3>
+        <Btn size="sm" onClick={() => { setInvoiceForm({ ...emptyInvoiceForm }); setShowInvoiceModal(true); }}>
+          <PlusIcon size={13} /> New Invoice
+        </Btn>
+      </div>
+      {data.totalReceivables > 0 && (
+        <div style={{ display: 'flex', gap: 10, marginBottom: 12, flexWrap: 'wrap' }}>
+          <span style={{
+            padding: '5px 12px', borderRadius: radius.md, fontSize: 13, fontWeight: 600,
+            background: colors.warningMuted, color: colors.warning,
+          }}>
+            {formatCurrency(data.totalReceivables)} outstanding
+          </span>
+          {data.overdueInvoices > 0 && (
+            <span style={{
+              padding: '5px 12px', borderRadius: radius.md, fontSize: 13, fontWeight: 600,
+              background: `${colors.error}18`, color: colors.error,
+            }}>
+              {data.overdueInvoices} overdue
+            </span>
+          )}
+        </div>
+      )}
+      {invoices.length === 0 ? (
+        <Card style={{ marginBottom: 28 }}>
+          <div style={{ textAlign: 'center', padding: '24px', color: colors.textMuted, fontSize: 13 }}>
+            No invoices yet. Create your first invoice to track payments.
+          </div>
+        </Card>
+      ) : (
+        <Card style={{ padding: 0, overflow: 'hidden', marginBottom: 28 }}>
+          <div style={{ overflowX: 'auto' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+              <thead>
+                <tr>
+                  <th style={thStyle}>Client</th>
+                  <th style={thStyle}>Description</th>
+                  <th style={thStyle}>Amount</th>
+                  <th style={thStyle}>Due Date</th>
+                  <th style={thStyle}>Status</th>
+                  <th style={thStyle}>Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[...invoices].sort((a, b) => a.dueDate.localeCompare(b.dueDate)).map((inv) => {
+                  const clientName = inv.clientId === 'personal'
+                    ? 'Personal'
+                    : clients.find((c) => c.id === inv.clientId)?.name || '--';
+                  const over = inv.status !== 'paid' && isOverdue(inv.dueDate);
+                  const statusColor = inv.status === 'paid' ? colors.success
+                    : over ? colors.error : colors.warning;
+                  const statusLabel = inv.status === 'paid' ? 'Paid'
+                    : over ? 'Overdue' : 'Unpaid';
+                  return (
+                    <tr key={inv.id}>
+                      <td style={{ ...tdStyle, fontWeight: 600 }}>{clientName}</td>
+                      <td style={{ ...tdStyle, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {inv.description || '--'}
+                      </td>
+                      <td style={{ ...tdStyle, fontWeight: 700, color: colors.accent }}>
+                        {formatCurrency(inv.amount)}
+                      </td>
+                      <td style={{ ...tdStyle, color: over ? colors.error : colors.textSecondary }}>
+                        {formatDate(inv.dueDate)}
+                      </td>
+                      <td style={tdStyle}>
+                        <span style={{
+                          padding: '2px 10px', borderRadius: radius.full, fontSize: 11, fontWeight: 600,
+                          background: `${statusColor}18`, color: statusColor,
+                        }}>
+                          {statusLabel}
+                        </span>
+                      </td>
+                      <td style={tdStyle}>
+                        <div style={{ display: 'flex', gap: 6 }}>
+                          {inv.status !== 'paid' && (
+                            <Btn size="sm" variant="secondary" onClick={() => {
+                              updateInvoice(inv.id, { status: 'paid', paidDate: today() });
+                              toast('Invoice marked as paid', 'success');
+                            }}>
+                              Mark Paid
+                            </Btn>
+                          )}
+                          <Btn size="sm" variant="danger" onClick={() => {
+                            deleteInvoice(inv.id);
+                            toast('Invoice deleted');
+                          }}>
+                            <TrashIcon size={12} />
+                          </Btn>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
       {/* Per-Client Profitability */}
       <h3 style={{ fontSize: 14, fontWeight: 600, color: colors.textPrimary, marginBottom: 12 }}>Per-Client Profitability</h3>
       {data.clientProfitability.length === 0 ? (
@@ -237,6 +350,48 @@ export const Finance: React.FC = () => {
           </div>
         </Card>
       )}
+      {/* New Invoice Modal */}
+      <Modal open={showInvoiceModal} onClose={() => setShowInvoiceModal(false)} title="New Invoice" width={460}>
+        <Field label="Client" required>
+          <Select value={invoiceForm.clientId} onChange={(e) => setIF('clientId', e.target.value)}>
+            <option value="">Select client…</option>
+            {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+          </Select>
+        </Field>
+        <Field label="Description">
+          <Input value={invoiceForm.description} onChange={(e) => setIF('description', e.target.value)} placeholder="e.g. March retainer" />
+        </Field>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+          <Field label="Amount (USD)" required>
+            <Input type="number" min="0" value={invoiceForm.amount} onChange={(e) => setIF('amount', e.target.value)} placeholder="500" />
+          </Field>
+          <Field label="Due Date" required>
+            <Input type="date" value={invoiceForm.dueDate} onChange={(e) => setIF('dueDate', e.target.value)} />
+          </Field>
+        </div>
+        <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 16 }}>
+          <Btn variant="secondary" onClick={() => setShowInvoiceModal(false)}>Cancel</Btn>
+          <Btn
+            disabled={!invoiceForm.clientId || !invoiceForm.amount}
+            onClick={() => {
+              const inv: Invoice = {
+                id: genId(), clientId: invoiceForm.clientId,
+                description: invoiceForm.description,
+                amount: parseFloat(invoiceForm.amount) || 0,
+                dueDate: invoiceForm.dueDate,
+                status: 'unpaid' as InvoiceStatus,
+                paidDate: null,
+                createdAt: now(),
+              };
+              setInvoices((prev) => [...prev, inv]);
+              toast('Invoice created', 'success');
+              setShowInvoiceModal(false);
+            }}
+          >
+            Create Invoice
+          </Btn>
+        </div>
+      </Modal>
     </div>
   );
 };

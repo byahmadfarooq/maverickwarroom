@@ -73,7 +73,11 @@ export const Dashboard: React.FC = () => {
   const activeClients = clients.filter((c) => c.status === 'active');
   const mrr = activeClients.reduce((s, c) => s + c.retainer, 0);
   const pipelineValue = prospects.filter((p) => p.status !== 'lost').reduce((s, p) => s + p.dealValue, 0);
-  const postsThisMonth = posts.filter((p) => p.publishedDate && isThisMonth(p.publishedDate)).length;
+  const postsThisMonth = posts.filter((p) => {
+    if (p.status !== 'published') return false;
+    const d = p.publishedDate || p.scheduledDate;
+    return d ? isThisMonth(d) : true;
+  }).length;
 
   // Last 7 days metrics
   const recentProspectActivities = prospects.flatMap((p) =>
@@ -92,11 +96,15 @@ export const Dashboard: React.FC = () => {
   ).length;
   const inboundCalls7d = inbound7d.filter((l) => l.status === 'call_booked').length;
 
-  const publishedPosts7d = posts.filter((p) => p.publishedDate && isLastNDays(p.publishedDate, 7));
-  const totalImpressions7d = publishedPosts7d.reduce((s, p) => s + p.impressions, 0);
-  const totalEngagement7d = publishedPosts7d.reduce((s, p) => s + p.reactions + p.comments, 0);
-  const avgPerPost7d = publishedPosts7d.length
-    ? Math.round(totalImpressions7d / publishedPosts7d.length)
+  const publishedPosts30d = posts.filter((p) => {
+    if (p.status !== 'published') return false;
+    const dateToCheck = p.publishedDate || p.scheduledDate;
+    return dateToCheck ? isLastNDays(dateToCheck, 30) : true;
+  });
+  const totalImpressions7d = publishedPosts30d.reduce((s, p) => s + p.impressions, 0);
+  const totalEngagement7d = publishedPosts30d.reduce((s, p) => s + p.reactions + p.comments, 0);
+  const avgPerPost7d = publishedPosts30d.length
+    ? Math.round(totalImpressions7d / publishedPosts30d.length)
     : 0;
 
   // Needs attention
@@ -382,7 +390,7 @@ export const Dashboard: React.FC = () => {
             textTransform: 'uppercase',
             letterSpacing: 1,
           }}>
-            Content (7 Days)
+            Content (30 Days)
           </h4>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 12 }}>
             {([

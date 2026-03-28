@@ -33,6 +33,31 @@ const emptyForm = {
   linkClicks: 0, dmsFromPost: 0, leadsFromPost: 0,
 };
 
+function parseLinkedInText(raw: string): Partial<typeof emptyForm> {
+  const text = raw.replace(/,/g, '').toLowerCase();
+  const extract = (...keywords: string[]): number => {
+    for (const kw of keywords) {
+      const escaped = kw.replace(/\s+/g, '[\\s\\S]{0,6}');
+      let m = text.match(new RegExp(`(\\d+)[^\\d]{0,12}${escaped}`));
+      if (m) return parseInt(m[1]);
+      m = text.match(new RegExp(`${escaped}[^\\d]{0,12}(\\d+)`));
+      if (m) return parseInt(m[1]);
+    }
+    return 0;
+  };
+  return {
+    impressions:   extract('impressions', 'views', 'reach'),
+    reactions:     extract('reactions', 'likes', 'like'),
+    comments:      extract('comments', 'comment'),
+    saves:         extract('saves', 'save', 'bookmarks', 'bookmark'),
+    shares:        extract('reposts', 'repost', 'shares', 'share'),
+    profileViews:  extract('profile views', 'profile view'),
+    linkClicks:    extract('link clicks', 'link click', 'clicks'),
+    dmsFromPost:   extract('dms', 'direct messages'),
+    leadsFromPost: extract('leads'),
+  };
+}
+
 function getTrackingEntryForInterval(post: Post, intervalDays: number): TrackingEntry | undefined {
   if (!post.publishedDate) return undefined;
   const targetDate = new Date(post.publishedDate);
@@ -64,6 +89,8 @@ export const PostPerformance: React.FC = () => {
   const [trackingForm, setTrackingForm] = useState({ ...emptyForm });
   const [expandedPostId, setExpandedPostId] = useState<string | null>(null);
   const [storiesPost, setStoriesPost] = useState<Post | null>(null);
+  const [pasteText, setPasteText] = useState('');
+  const [parsedOk, setParsedOk] = useState(false);
 
   const publishedPosts = useMemo(() => {
     let filtered = posts.filter((p: Post) => p.status === 'published');
@@ -101,6 +128,8 @@ export const PostPerformance: React.FC = () => {
       leadsFromPost: post.leadsFromPost,
     });
     setTrackingModalPost(post.id);
+    setPasteText('');
+    setParsedOk(false);
   };
 
   const handleAddTracking = (): void => {
@@ -472,6 +501,45 @@ export const PostPerformance: React.FC = () => {
                   )}
                 </div>
               )}
+
+              {/* Paste from LinkedIn */}
+              <div style={{ marginBottom: 14 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <span style={{ fontSize: 12, fontWeight: 600, color: colors.textSecondary, textTransform: 'uppercase', letterSpacing: 0.6 }}>
+                    Paste from LinkedIn
+                  </span>
+                  {parsedOk && (
+                    <span style={{ fontSize: 11, color: colors.success, fontWeight: 600 }}>Parsed ✓</span>
+                  )}
+                </div>
+                <textarea
+                  value={pasteText}
+                  placeholder={"Paste your LinkedIn post analytics text here and fields will auto-fill…"}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    setPasteText(raw);
+                    if (raw.trim()) {
+                      const parsed = parseLinkedInText(raw);
+                      const hasData = Object.values(parsed).some((v) => (v as number) > 0);
+                      if (hasData) {
+                        setTrackingForm((f) => ({ ...f, ...parsed }));
+                        setParsedOk(true);
+                      } else {
+                        setParsedOk(false);
+                      }
+                    } else {
+                      setParsedOk(false);
+                    }
+                  }}
+                  style={{
+                    width: '100%', minHeight: 70, resize: 'vertical', boxSizing: 'border-box',
+                    background: colors.bg, border: `1px solid ${parsedOk ? colors.success : colors.border}`,
+                    borderRadius: radius.md, color: colors.textPrimary, fontSize: 12,
+                    padding: '8px 10px', fontFamily: 'inherit', outline: 'none',
+                    transition: 'border-color 0.2s',
+                  }}
+                />
+              </div>
 
               <Field label="Snapshot Date" required>
                 <Input type="date" value={trackingForm.date} onChange={setField('date')} />
